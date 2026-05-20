@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -15,14 +16,22 @@ from bybit_weak_intraday.scanner import run_archive_scan
 from .settings import settings
 
 _LOCK = Lock()
+JOB_ID_PATTERN = r"^[a-f0-9]{12}$"
+_JOB_ID_RE = re.compile(JOB_ID_PATTERN)
 
 
 def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def validate_job_id(job_id: str) -> str:
+    if not _JOB_ID_RE.fullmatch(job_id):
+        raise ValueError("invalid job_id")
+    return job_id
+
+
 def job_dir(job_id: str) -> Path:
-    return settings.jobs_dir / job_id
+    return settings.jobs_dir / validate_job_id(job_id)
 
 
 def job_meta_path(job_id: str) -> Path:

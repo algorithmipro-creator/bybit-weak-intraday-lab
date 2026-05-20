@@ -1,18 +1,20 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
-from pathlib import Path
+from pathlib import Path as FilePath
+from typing import Annotated
 
-from fastapi import BackgroundTasks, FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Path
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
-from .job_store import create_job, job_dir, list_jobs, load_meta, run_job
+from .job_store import JOB_ID_PATTERN, create_job, job_dir, list_jobs, load_meta, run_job
 from .schemas import JobResponse, ScanRequest
 from .settings import settings
 
 app = FastAPI(title=settings.project_name)
 executor = ThreadPoolExecutor(max_workers=settings.max_workers)
+JobId = Annotated[str, Path(pattern=JOB_ID_PATTERN)]
 
 app.add_middleware(
     CORSMiddleware,
@@ -45,7 +47,7 @@ def jobs() -> list[dict]:
 
 
 @app.get("/jobs/{job_id}")
-def job(job_id: str) -> dict:
+def job(job_id: JobId) -> dict:
     meta = load_meta(job_id)
     if not meta:
         raise HTTPException(status_code=404, detail="job not found")
@@ -55,7 +57,7 @@ def job(job_id: str) -> dict:
     return meta
 
 
-def _job_file(job_id: str, name: str) -> Path:
+def _job_file(job_id: str, name: str) -> FilePath:
     p = job_dir(job_id) / name
     if not p.exists():
         raise HTTPException(status_code=404, detail=f"{name} not found")
@@ -63,10 +65,10 @@ def _job_file(job_id: str, name: str) -> Path:
 
 
 @app.get("/jobs/{job_id}/metrics.csv")
-def metrics_csv(job_id: str) -> FileResponse:
+def metrics_csv(job_id: JobId) -> FileResponse:
     return FileResponse(_job_file(job_id, "metrics.csv"), media_type="text/csv", filename=f"{job_id}_metrics.csv")
 
 
 @app.get("/jobs/{job_id}/trades.csv")
-def trades_csv(job_id: str) -> FileResponse:
+def trades_csv(job_id: JobId) -> FileResponse:
     return FileResponse(_job_file(job_id, "trades.csv"), media_type="text/csv", filename=f"{job_id}_trades.csv")
