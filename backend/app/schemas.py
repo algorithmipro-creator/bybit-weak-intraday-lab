@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -48,6 +48,14 @@ class ScanRequest(BaseModel):
             raise ValueError("full_universe scans must set max_symbols between 1 and 500")
 
         return self
+
+
+GridValue = Annotated[float, Field(gt=0, le=1)]
+
+
+class OptimizeRequest(ScanRequest):
+    tp_grid: list[GridValue] = Field(default_factory=lambda: [0.04, 0.06, 0.08], min_length=1, max_length=10)
+    sl_grid: list[GridValue] = Field(default_factory=lambda: [0.05, 0.07], min_length=1, max_length=10)
 
 
 class JobResponse(BaseModel):

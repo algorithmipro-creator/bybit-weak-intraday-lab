@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
 from .job_store import JOB_ID_PATTERN, create_job, job_dir, list_jobs, load_meta, run_job
-from .schemas import JobResponse, ScanRequest
+from .schemas import JobResponse, OptimizeRequest, ScanRequest
 from .settings import settings
 
 app = FastAPI(title=settings.project_name)
@@ -41,6 +41,16 @@ def start_scan(req: ScanRequest) -> JobResponse:
     return JobResponse(job_id=job_id, status="queued", message="scan queued")
 
 
+@app.post("/jobs/optimize-tp-sl", response_model=JobResponse)
+def start_tp_sl_optimizer(req: OptimizeRequest) -> JobResponse:
+    if not req.full_universe and not req.symbols:
+        raise HTTPException(status_code=400, detail="Provide symbols or set full_universe=true")
+    payload = req.model_dump()
+    job_id = create_job(payload, job_type="tp_sl_grid")
+    executor.submit(run_job, job_id)
+    return JobResponse(job_id=job_id, status="queued", message="tp/sl grid optimization queued")
+
+
 @app.get("/jobs")
 def jobs() -> list[dict]:
     return list_jobs()
@@ -52,8 +62,12 @@ def job(job_id: JobId) -> dict:
     if not meta:
         raise HTTPException(status_code=404, detail="job not found")
     if meta.get("status") == "done":
-        meta["metrics_url"] = f"/jobs/{job_id}/metrics.csv"
-        meta["trades_url"] = f"/jobs/{job_id}/trades.csv"
+        if meta.get("job_type") == "tp_sl_grid":
+            meta["grid_url"] = f"/jobs/{job_id}/grid.csv"
+            meta["grid_trades_url"] = f"/jobs/{job_id}/grid_trades.csv"
+        else:
+            meta["metrics_url"] = f"/jobs/{job_id}/metrics.csv"
+            meta["trades_url"] = f"/jobs/{job_id}/trades.csv"
     return meta
 
 
@@ -72,3 +86,13 @@ def metrics_csv(job_id: JobId) -> FileResponse:
 @app.get("/jobs/{job_id}/trades.csv")
 def trades_csv(job_id: JobId) -> FileResponse:
     return FileResponse(_job_file(job_id, "trades.csv"), media_type="text/csv", filename=f"{job_id}_trades.csv")
+
+
+@app.get("/jobs/{job_id}/grid.csv")
+def grid_csv(job_id: JobId) -> FileResponse:
+    return FileResponse(_job_file(job_id, "grid.csv"), media_type="text/csv", filename=f"{job_id}_grid.csv")
+
+
+@app.get("/jobs/{job_id}/grid_trades.csv")
+def grid_trades_csv(job_id: JobId) -> FileResponse:
+    return FileResponse(_job_file(job_id, "grid_trades.csv"), media_type="text/csv", filename=f"{job_id}_grid_trades.csv")
