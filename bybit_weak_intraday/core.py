@@ -37,7 +37,7 @@ def normalize_ticks(df: pd.DataFrame) -> pd.DataFrame:
     out = df.copy()
     # Bybit archive timestamps are seconds with millisecond decimals.
     ts_ms = (pd.to_numeric(out["timestamp"], errors="coerce").astype(float).to_numpy() * 1000).astype("int64")
-    out["dt"] = pd.to_datetime(ts_ms, unit="ms", utc=True)
+    out["dt"] = pd.to_datetime(ts_ms, unit="ms", utc=True).as_unit("ns")
     out["ts_ns"] = out["dt"].astype("int64")
     out["size"] = pd.to_numeric(out["size"], errors="coerce")
     out["price"] = pd.to_numeric(out["price"], errors="coerce")
