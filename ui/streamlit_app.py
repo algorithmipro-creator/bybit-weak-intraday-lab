@@ -10,6 +10,7 @@ import plotly.express as px
 import requests
 import streamlit as st
 
+from ui.account_backtest import AccountBacktestSettings, run_account_backtest
 from ui.result_summary import best_grid_result, trade_result_summary
 
 DEFAULT_API = os.getenv("BWI_API_URL", "http://backend:8000")
@@ -52,6 +53,12 @@ def number(value: Any, decimals: int = 2) -> str:
     return f"{float(value):.{decimals}f}"
 
 
+def money(value: Any) -> str:
+    if value is None or pd.isna(value):
+        return "n/a"
+    return f"${float(value):,.2f}"
+
+
 def render_job_status(meta: dict) -> None:
     status = str(meta.get("status") or "unknown")
     message = meta.get("message") or ""
@@ -78,6 +85,95 @@ def render_scan_overview(trades: pd.DataFrame) -> None:
     cols[6].metric("Avg MAE", pct(summary["avg_mae_pct"]))
     if summary["trades"] == 0:
         st.warning("No candidate trades matched this job's filters.")
+
+
+def render_account_backtest(trades: pd.DataFrame) -> None:
+    st.subheader("Account Backtest")
+    with st.expander("Account assumptions", expanded=False):
+        c1, c2, c3, c4 = st.columns(4)
+        initial_equity = c1.number_input(
+            "Initial equity USD",
+            min_value=100.0,
+            value=10_000.0,
+            step=500.0,
+            format="%.2f",
+        )
+        position_size = c2.number_input(
+            "Position size %",
+            min_value=0.1,
+            max_value=100.0,
+            value=10.0,
+            step=1.0,
+            format="%.2f",
+        )
+        leverage = c3.number_input("Leverage", min_value=0.1, value=1.0, step=0.5, format="%.2f")
+        entry_fee = c4.number_input("Entry fee %", min_value=0.0, value=0.06, step=0.01, format="%.3f")
+        c5, c6, c7 = st.columns(3)
+        exit_fee = c5.number_input("Exit fee %", min_value=0.0, value=0.06, step=0.01, format="%.3f")
+        slippage = c6.number_input("Slippage %", min_value=0.0, value=0.0, step=0.01, format="%.3f")
+        funding = c7.number_input("Funding %", min_value=0.0, value=0.0, step=0.01, format="%.3f")
+        st.caption("Sequential close-time research model. It does not reserve margin for overlapping positions.")
+
+    settings = AccountBacktestSettings(
+        initial_equity_usd=float(initial_equity),
+        position_size_pct=float(position_size),
+        leverage=float(leverage),
+        entry_fee_pct=float(entry_fee),
+        exit_fee_pct=float(exit_fee),
+        slippage_pct=float(slippage),
+        funding_pct=float(funding),
+    )
+    try:
+        summary, curve = run_account_backtest(trades, settings)
+    except ValueError as exc:
+        st.error(str(exc))
+        return
+
+    c1, c2, c3, c4, c5, c6 = st.columns(6)
+    c1.metric("Final equity", money(summary["final_equity_usd"]))
+    c2.metric("Total return", pct(summary["total_return_pct"]))
+    c3.metric("Net PnL", money(summary["net_pnl_usd"]))
+    c4.metric("Max DD", pct(summary["max_drawdown_pct"]))
+    c5.metric("Win rate", pct(summary["win_rate_pct"]))
+    c6.metric("Skipped", int(summary["skipped_trades"]))
+
+    if curve.empty:
+        st.info("No account backtest rows available for these trades.")
+        return
+
+    chart_left, chart_right = st.columns(2)
+    curve_for_chart = curve.copy()
+    curve_for_chart["trade_label"] = curve_for_chart.apply(
+        lambda row: f"{row.get('date') or ''} {row.get('symbol') or ''}".strip(),
+        axis=1,
+    )
+    with chart_left:
+        st.plotly_chart(
+            px.line(
+                curve_for_chart,
+                x="exit_time_utc",
+                y="equity_after_usd",
+                markers=True,
+                hover_data=["symbol", "outcome", "net_pnl_usd", "drawdown_pct"],
+                title="Equity curve",
+            ),
+            use_container_width=True,
+        )
+    with chart_right:
+        st.plotly_chart(
+            px.bar(
+                curve_for_chart,
+                x="trade_label",
+                y="net_pnl_usd",
+                color="outcome" if "outcome" in curve_for_chart.columns else None,
+                hover_data=["pnl_underlying_pct", "account_return_pct", "costs_usd"],
+                title="Per-trade account PnL",
+            ),
+            use_container_width=True,
+        )
+
+    with st.expander("Account trade details", expanded=False):
+        st.dataframe(curve, use_container_width=True, hide_index=True)
 
 
 def render_grid_overview(grid: pd.DataFrame) -> None:
@@ -264,6 +360,7 @@ if selected_job:
                 metrics = pd.DataFrame()
 
             render_scan_overview(trades)
+            render_account_backtest(trades)
             tab1, tab2, tab3 = st.tabs(["Trades", "Metrics", "Charts"])
             with tab1:
                 st.download_button("Download trades CSV", trades_csv, file_name=f"{selected_job}_trades.csv")
