@@ -3,7 +3,8 @@ from __future__ import annotations
 import pandas as pd
 
 from bybit_weak_intraday.core import normalize_ticks
-from bybit_weak_intraday.causal import sell_share_between, truncate_ticks_at
+from bybit_weak_intraday.causal import find_causal_signals, sell_share_between, truncate_ticks_at
+from bybit_weak_intraday.core import StrategyConfig
 
 
 def test_truncate_ticks_at_removes_future_rows():
@@ -41,3 +42,36 @@ def test_sell_share_between_uses_only_interval():
     sell_share = sell_share_between(ticks, start_ns, end_ns)
 
     assert sell_share == 50.0
+
+
+def _ticks(prices: list[float], sides: list[str], start_ts: int = 1773792000) -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            "timestamp": [start_ts + i * 300 for i in range(len(prices))],
+            "side": sides,
+            "size": [1000 for _ in prices],
+            "price": prices,
+        }
+    )
+
+
+def test_find_causal_signals_emits_weak_without_future_ticks():
+    prev = _ticks(
+        prices=[100, 96, 92, 90],
+        sides=["Sell", "Sell", "Sell", "Sell"],
+        start_ts=1773705600,
+    )
+    cur = _ticks(
+        prices=[90, 94, 96, 95, 93, 91, 89, 200],
+        sides=["Buy", "Buy", "Buy", "Sell", "Sell", "Sell", "Sell", "Buy"],
+    )
+    cfg = StrategyConfig(min_turnover=0, weak_threshold=8, pump_threshold=99)
+
+    signals = find_causal_signals("TESTUSDT", "2026-03-18", cur, prev, cfg)
+
+    weak = [s for s in signals if s.mode == "weak"]
+    assert len(weak) == 1
+    assert weak[0].symbol == "TESTUSDT"
+    assert weak[0].signal_price < weak[0].vwap_at_signal
+    assert weak[0].signal_price != 200
+    assert weak[0].turnover_so_far_usdt == 468_000
