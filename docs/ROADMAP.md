@@ -17,6 +17,12 @@ Deliverables:
 
 Goal: separate historical labeling from live-signal-safe calculations.
 
+Detailed implementation plan:
+
+```text
+docs/IMPLEMENTATION_PLAN_CAUSAL_SCAN.md
+```
+
 Tasks:
 
 1. Add causal signal functions that only use data available at the signal timestamp.

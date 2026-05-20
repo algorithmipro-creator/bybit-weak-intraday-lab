@@ -189,6 +189,8 @@ curl -X POST http://localhost:8000/jobs/scan \
 - [SPECIFICATION.md](SPECIFICATION.md): formal strategy, system, data, API and limitations spec.
 - [PRESENTATION.md](PRESENTATION.md): concise project description for sharing.
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): component and data-flow overview.
+- [docs/DEVELOPMENT_PLAN_RU.md](docs/DEVELOPMENT_PLAN_RU.md): Russian development roadmap refined from the project draft.
+- [docs/IMPLEMENTATION_PLAN_CAUSAL_SCAN.md](docs/IMPLEMENTATION_PLAN_CAUSAL_SCAN.md): implementation-ready plan for causal/live-scan-safe mode.
 - [docs/GITHUB_SETUP.md](docs/GITHUB_SETUP.md): how to initialize and push the repository.
 - [docs/CODEX_SUPERPOWERS_CONTEXT7.md](docs/CODEX_SUPERPOWERS_CONTEXT7.md): Codex, Superpowers and Context7 setup.
 - [deploy/README_VPS.md](deploy/README_VPS.md): VPS deployment notes.
