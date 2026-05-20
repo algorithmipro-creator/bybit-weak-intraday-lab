@@ -176,6 +176,7 @@ GET  /jobs/{job_id}
 GET  /jobs/{job_id}/metrics.csv
 GET  /jobs/{job_id}/trades.csv
 GET  /jobs/{job_id}/signals.csv
+GET  /jobs/{job_id}/evaluations.csv
 GET  /jobs/{job_id}/grid.csv
 GET  /jobs/{job_id}/grid_trades.csv
 ```
@@ -211,7 +212,14 @@ curl -X POST http://localhost:8000/jobs/scan \
   }'
 ```
 
-The causal scan endpoint uses the same request shape as `/jobs/scan`, but writes `signals.csv` instead of post-entry trade results. It is intended for live-scan-safe signal review and does not include MFE/MAE, TP/SL outcomes or account backtest.
+The causal scan endpoint uses the same request shape as `/jobs/scan`, but keeps signal generation separate from post-signal evaluation:
+
+```text
+signals.csv      live-scan-safe signals only
+evaluations.csv  post-signal MFE/MAE, TP/SL outcome and PnL
+```
+
+`evaluations.csv` may use future ticks only after the causal signal has already been emitted. This keeps no-lookahead signal detection separate from research performance measurement.
 
 ```bash
 curl -X POST http://localhost:8000/jobs/scan-causal \

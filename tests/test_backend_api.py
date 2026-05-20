@@ -131,7 +131,7 @@ def test_valid_optimizer_queues_grid_job(prevent_real_scan_jobs):
     assert prevent_real_scan_jobs["payload"]["sl_grid"] == [0.05, 0.07]
 
 
-def test_done_causal_job_exposes_signals_url(monkeypatch):
+def test_done_causal_job_exposes_signal_and_evaluation_urls(monkeypatch):
     monkeypatch.setattr(
         main,
         "load_meta",
@@ -140,6 +140,7 @@ def test_done_causal_job_exposes_signals_url(monkeypatch):
             "job_type": "causal_scan",
             "status": "done",
             "signals_rows": 3,
+            "evaluations_rows": 3,
             "message": "causal scan complete",
         },
     )
@@ -148,3 +149,4 @@ def test_done_causal_job_exposes_signals_url(monkeypatch):
 
     assert response.status_code == 200
     assert response.json()["signals_url"] == "/jobs/abc123def456/signals.csv"
+    assert response.json()["evaluations_url"] == "/jobs/abc123def456/evaluations.csv"

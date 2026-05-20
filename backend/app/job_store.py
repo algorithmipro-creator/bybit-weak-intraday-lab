@@ -10,7 +10,7 @@ from typing import Any
 
 import pandas as pd
 
-from bybit_weak_intraday.causal_scanner import run_archive_causal_scan
+from bybit_weak_intraday.causal_scanner import run_archive_causal_scan_outputs
 from bybit_weak_intraday.core import StrategyConfig
 from bybit_weak_intraday.optimizer import run_archive_tp_sl_grid
 from bybit_weak_intraday.scanner import run_archive_scan
@@ -159,7 +159,7 @@ def _run_tp_sl_grid_job(job_id: str, meta: dict[str, Any]) -> None:
 def _run_causal_scan_job(job_id: str, meta: dict[str, Any]) -> None:
     req = meta["request"]
     cfg = _strategy_config_from_request(req)
-    signals = run_archive_causal_scan(
+    signals, evaluations = run_archive_causal_scan_outputs(
         start=req["start"],
         end=req["end"],
         symbols=req.get("symbols") or [],
@@ -171,14 +171,18 @@ def _run_causal_scan_job(job_id: str, meta: dict[str, Any]) -> None:
     )
     out_dir = job_dir(job_id)
     signals_path = out_dir / "signals.csv"
+    evaluations_path = out_dir / "evaluations.csv"
     signals.to_csv(signals_path, index=False)
+    evaluations.to_csv(evaluations_path, index=False)
     meta.update(
         {
             "status": "done",
             "updated_at": now_iso(),
             "message": "causal scan complete",
             "signals_rows": int(len(signals)),
+            "evaluations_rows": int(len(evaluations)),
             "signals_path": str(signals_path),
+            "evaluations_path": str(evaluations_path),
         }
     )
 
