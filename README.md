@@ -169,11 +169,13 @@ python scripts/run_archive_scan.py \
 ```text
 GET  /health
 POST /jobs/scan
+POST /jobs/scan-causal
 POST /jobs/optimize-tp-sl
 GET  /jobs
 GET  /jobs/{job_id}
 GET  /jobs/{job_id}/metrics.csv
 GET  /jobs/{job_id}/trades.csv
+GET  /jobs/{job_id}/signals.csv
 GET  /jobs/{job_id}/grid.csv
 GET  /jobs/{job_id}/grid_trades.csv
 ```
@@ -197,6 +199,27 @@ curl -X POST http://localhost:8000/jobs/scan \
     "start":"2026-03-18",
     "end":"2026-03-27",
     "symbols":["EIGENUSDT","GRASSUSDT","RVNUSDT","ENJUSDT","JTOUSDT","STGUSDT","ENAUSDT"],
+    "full_universe":false,
+    "min_turnover":1000000,
+    "weak_threshold":9,
+    "pump_threshold":9,
+    "tp_weak":0.06,
+    "sl_weak":0.07,
+    "tp_pump":0.08,
+    "sl_pump":0.07,
+    "max_hold_min":720
+  }'
+```
+
+The causal scan endpoint uses the same request shape as `/jobs/scan`, but writes `signals.csv` instead of post-entry trade results. It is intended for live-scan-safe signal review and does not include MFE/MAE, TP/SL outcomes or account backtest.
+
+```bash
+curl -X POST http://localhost:8000/jobs/scan-causal \
+  -H "Content-Type: application/json" \
+  -d '{
+    "start":"2026-03-18",
+    "end":"2026-03-20",
+    "symbols":["EIGENUSDT","GRASSUSDT","ENJUSDT"],
     "full_universe":false,
     "min_turnover":1000000,
     "weak_threshold":9,

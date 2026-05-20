@@ -176,6 +176,20 @@ def render_account_backtest(trades: pd.DataFrame) -> None:
         st.dataframe(curve, use_container_width=True, hide_index=True)
 
 
+def render_causal_overview(signals: pd.DataFrame) -> None:
+    st.subheader("Causal Signal Overview")
+    count = int(len(signals))
+    modes = signals["mode"].astype(str) if "mode" in signals.columns else pd.Series(dtype=str)
+    avg_score = signals["score"].mean() if "score" in signals.columns and not signals.empty else 0.0
+    cols = st.columns(4)
+    cols[0].metric("Signals", count)
+    cols[1].metric("Weak", int((modes == "weak").sum()))
+    cols[2].metric("Pump", int((modes == "pump").sum()))
+    cols[3].metric("Avg score", number(avg_score))
+    if signals.empty:
+        st.warning("No causal signals matched this job's filters.")
+
+
 def render_grid_overview(grid: pd.DataFrame) -> None:
     st.subheader("Best grid result")
     best = best_grid_result(grid)
@@ -196,7 +210,7 @@ with st.sidebar:
     auto_refresh = st.checkbox("Auto-refresh active jobs", value=True)
 
     st.header("Scan settings")
-    job_mode = st.radio("Job type", ["Archive scan", "TP/SL optimizer"], horizontal=True)
+    job_mode = st.radio("Job type", ["Archive scan", "Causal signal scan", "TP/SL optimizer"], horizontal=True)
     start = st.text_input("Start date", "2026-03-18")
     end = st.text_input("End date", "2026-03-27")
     symbols_raw = st.text_area("Symbols", "EIGENUSDT,GRASSUSDT,RVNUSDT,ENJUSDT,JTOUSDT,STGUSDT,ENAUSDT", height=100)
@@ -235,6 +249,8 @@ if run:
     }
     try:
         path = "/jobs/scan"
+        if job_mode == "Causal signal scan":
+            path = "/jobs/scan-causal"
         if job_mode == "TP/SL optimizer":
             payload["tp_grid"] = parse_float_grid(tp_grid_raw)
             payload["sl_grid"] = parse_float_grid(sl_grid_raw)
@@ -262,6 +278,7 @@ try:
                 "message",
                 "metrics_rows",
                 "trades_rows",
+                "signals_rows",
                 "grid_rows",
                 "grid_trades_rows",
                 "created_at",
@@ -295,7 +312,7 @@ if selected_job:
         c1, c2, c3, c4, c5 = st.columns(5)
         c1.metric("Status", meta.get("status") or "unknown")
         c2.metric("Type", meta.get("job_type") or "scan")
-        c3.metric("Result rows", meta.get("metrics_rows") or meta.get("grid_rows") or 0)
+        c3.metric("Result rows", meta.get("metrics_rows") or meta.get("grid_rows") or meta.get("signals_rows") or 0)
         c4.metric("Trade rows", meta.get("trades_rows") or meta.get("grid_trades_rows") or 0)
         c5.metric("Updated", (meta.get("updated_at") or "")[:19])
         render_job_status(meta)
@@ -304,6 +321,38 @@ if selected_job:
         if status in ACTIVE_STATUSES and auto_refresh:
             time.sleep(3)
             st.rerun()
+        elif status == "done" and meta.get("job_type") == "causal_scan":
+            signals_csv = ""
+            try:
+                signals_csv = api_get(f"/jobs/{selected_job}/signals.csv", api_url).text
+                signals = csv_to_frame(signals_csv)
+            except Exception as exc:
+                st.error(f"Failed to load causal signals: {exc}")
+                signals = pd.DataFrame()
+
+            render_causal_overview(signals)
+            tab1, tab2 = st.tabs(["Signals", "Charts"])
+            with tab1:
+                st.download_button("Download signals CSV", signals_csv, file_name=f"{selected_job}_signals.csv")
+                st.dataframe(signals, use_container_width=True, hide_index=True)
+            with tab2:
+                if not signals.empty:
+                    if {"signal_time_utc", "score", "mode"}.issubset(signals.columns):
+                        st.plotly_chart(
+                            px.scatter(
+                                signals,
+                                x="signal_time_utc",
+                                y="score",
+                                color="mode",
+                                hover_data=["symbol", "signal_price", "turnover_so_far_usdt", "turnover_ratio_so_far"],
+                                title="Causal signals by time and score",
+                            ),
+                            use_container_width=True,
+                        )
+                    if "mode" in signals.columns:
+                        st.plotly_chart(px.histogram(signals, x="mode", title="Causal signal modes"), use_container_width=True)
+                else:
+                    st.info("No causal signal rows in this job.")
         elif status == "done" and meta.get("job_type") == "tp_sl_grid":
             grid_csv = ""
             grid_trades_csv = ""
