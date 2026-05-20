@@ -28,8 +28,14 @@ def api_post(path: str, payload: dict):
     r.raise_for_status()
     return r
 
+
+def parse_float_grid(value: str) -> list[float]:
+    return [float(x.strip()) for x in value.replace("\n", ",").split(",") if x.strip()]
+
+
 with st.sidebar:
     st.header("Scan settings")
+    job_mode = st.radio("Job type", ["Archive scan", "TP/SL optimizer"], horizontal=True)
     start = st.text_input("Start date", "2026-03-18")
     end = st.text_input("End date", "2026-03-27")
     symbols_raw = st.text_area("Symbols", "EIGENUSDT,GRASSUSDT,RVNUSDT,ENJUSDT,JTOUSDT,STGUSDT,ENAUSDT", height=100)
@@ -43,7 +49,10 @@ with st.sidebar:
     tp_pump = st.number_input("TP pump underlying", value=0.08, min_value=0.001, max_value=1.0, step=0.01, format="%.3f")
     sl_pump = st.number_input("SL pump underlying", value=0.07, min_value=0.001, max_value=1.0, step=0.01, format="%.3f")
     max_hold_min = st.number_input("Max hold minutes", min_value=15, max_value=1440, value=720, step=15)
-    run = st.button("Start scan", type="primary")
+    if job_mode == "TP/SL optimizer":
+        tp_grid_raw = st.text_input("TP grid", "0.04,0.06,0.08")
+        sl_grid_raw = st.text_input("SL grid", "0.05,0.07")
+    run = st.button("Start job", type="primary")
 
 if run:
     symbols = [s.strip().upper() for s in symbols_raw.replace("\n", ",").split(",") if s.strip()]
@@ -64,7 +73,12 @@ if run:
         "max_hold_min": float(max_hold_min),
     }
     try:
-        resp = api_post("/jobs/scan", payload).json()
+        path = "/jobs/scan"
+        if job_mode == "TP/SL optimizer":
+            payload["tp_grid"] = parse_float_grid(tp_grid_raw)
+            payload["sl_grid"] = parse_float_grid(sl_grid_raw)
+            path = "/jobs/optimize-tp-sl"
+        resp = api_post(path, payload).json()
         st.success(f"Job queued: {resp['job_id']}")
     except Exception as exc:
         st.error(f"Failed to start job: {exc}")
@@ -93,7 +107,39 @@ if selected_job:
     c4.metric("Updated", (meta.get("updated_at") or "")[:19])
     st.code(meta.get("message") or "", language="text")
 
-    if meta.get("status") == "done":
+    if meta.get("status") == "done" and meta.get("job_type") == "tp_sl_grid":
+        grid_csv = api_get(f"/jobs/{selected_job}/grid.csv").text
+        grid_trades_csv = api_get(f"/jobs/{selected_job}/grid_trades.csv").text
+        grid = pd.read_csv(StringIO(grid_csv)) if grid_csv.strip() else pd.DataFrame()
+        grid_trades = pd.read_csv(StringIO(grid_trades_csv)) if grid_trades_csv.strip() else pd.DataFrame()
+
+        tab1, tab2, tab3 = st.tabs(["Grid Summary", "Grid Trades", "Charts"])
+        with tab1:
+            st.download_button("Download grid CSV", grid_csv, file_name=f"{selected_job}_grid.csv")
+            st.dataframe(grid, use_container_width=True)
+        with tab2:
+            st.download_button("Download grid trades CSV", grid_trades_csv, file_name=f"{selected_job}_grid_trades.csv")
+            st.dataframe(grid_trades, use_container_width=True)
+        with tab3:
+            if not grid.empty and {"tp_pct", "sl_pct", "avg_underlying_pnl"}.issubset(grid.columns):
+                st.plotly_chart(
+                    px.scatter(
+                        grid,
+                        x="tp_pct",
+                        y="sl_pct",
+                        size="trades",
+                        color="avg_underlying_pnl",
+                        hover_data=["tp_rate", "sl_rate", "avg_minutes_to_exit"],
+                        title="TP/SL grid average PnL",
+                    ),
+                    use_container_width=True,
+                )
+            if not grid_trades.empty and {"outcome", "tp_pct", "sl_pct"}.issubset(grid_trades.columns):
+                st.plotly_chart(px.histogram(grid_trades, x="outcome", color="tp_pct", title="Grid outcomes"), use_container_width=True)
+            if grid.empty and grid_trades.empty:
+                st.info("No optimizer results in this job.")
+
+    elif meta.get("status") == "done":
         trades_csv = api_get(f"/jobs/{selected_job}/trades.csv").text
         metrics_csv = api_get(f"/jobs/{selected_job}/metrics.csv").text
         trades = pd.read_csv(StringIO(trades_csv)) if trades_csv.strip() else pd.DataFrame()

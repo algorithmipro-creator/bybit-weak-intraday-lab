@@ -14,8 +14,9 @@ client = TestClient(main.app)
 def prevent_real_scan_jobs(monkeypatch):
     captured: dict = {}
 
-    def fake_create_job(payload):
+    def fake_create_job(payload, job_type="scan"):
         captured["payload"] = payload
+        captured["job_type"] = job_type
         return "abc123def456"
 
     class FakeExecutor:
@@ -91,4 +92,24 @@ def test_valid_scan_queues_normalized_symbols(prevent_real_scan_jobs):
     assert response.status_code == 200
     assert response.json()["job_id"] == "abc123def456"
     assert prevent_real_scan_jobs["payload"]["symbols"] == ["ENAUSDT", "JTOUSDT"]
+    assert prevent_real_scan_jobs["job_type"] == "scan"
     assert prevent_real_scan_jobs["submitted"][1] == "abc123def456"
+
+
+def test_optimizer_rejects_empty_tp_grid():
+    response = client.post("/jobs/optimize-tp-sl", json={**_scan_payload(), "tp_grid": [], "sl_grid": [0.07]})
+
+    assert response.status_code == 422
+
+
+def test_valid_optimizer_queues_grid_job(prevent_real_scan_jobs):
+    response = client.post(
+        "/jobs/optimize-tp-sl",
+        json={**_scan_payload(symbols=["enausdt"]), "tp_grid": [0.04, 0.06], "sl_grid": [0.05, 0.07]},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["job_id"] == "abc123def456"
+    assert prevent_real_scan_jobs["job_type"] == "tp_sl_grid"
+    assert prevent_real_scan_jobs["payload"]["tp_grid"] == [0.04, 0.06]
+    assert prevent_real_scan_jobs["payload"]["sl_grid"] == [0.05, 0.07]

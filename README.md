@@ -169,10 +169,13 @@ python scripts/run_archive_scan.py \
 ```text
 GET  /health
 POST /jobs/scan
+POST /jobs/optimize-tp-sl
 GET  /jobs
 GET  /jobs/{job_id}
 GET  /jobs/{job_id}/metrics.csv
 GET  /jobs/{job_id}/trades.csv
+GET  /jobs/{job_id}/grid.csv
+GET  /jobs/{job_id}/grid_trades.csv
 ```
 
 Safety limits in the current backend:
@@ -203,6 +206,30 @@ curl -X POST http://localhost:8000/jobs/scan \
     "tp_pump":0.08,
     "sl_pump":0.07,
     "max_hold_min":720
+  }'
+```
+
+TP/SL optimizer example:
+
+```bash
+curl -X POST http://localhost:8000/jobs/optimize-tp-sl \
+  -H "Content-Type: application/json" \
+  -d '{
+    "start":"2026-03-18",
+    "end":"2026-03-18",
+    "symbols":["ENAUSDT"],
+    "full_universe":false,
+    "max_symbols":0,
+    "min_turnover":1000000,
+    "weak_threshold":9,
+    "pump_threshold":9,
+    "tp_weak":0.06,
+    "sl_weak":0.07,
+    "tp_pump":0.08,
+    "sl_pump":0.07,
+    "max_hold_min":720,
+    "tp_grid":[0.04,0.06,0.08],
+    "sl_grid":[0.05,0.07]
   }'
 ```
 

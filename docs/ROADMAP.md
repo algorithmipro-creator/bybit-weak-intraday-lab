@@ -62,9 +62,11 @@ A small VPS can run scans without accidental open-ended resource usage.
 
 Goal: improve research feedback loops.
 
+Status: initial offline TP/SL grid optimizer implemented with backend job support and Streamlit view.
+
 Tasks:
 
-1. Add TP/SL grid optimizer.
+1. Add TP/SL grid optimizer. Initial offline implementation complete.
 2. Add MFE/MAE distribution views.
 3. Add score tier analysis.
 4. Add time-of-day analysis.

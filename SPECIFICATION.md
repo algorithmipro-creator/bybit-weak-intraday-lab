@@ -229,6 +229,19 @@ max_symbols
 include_majors
 ```
 
+### `POST /jobs/optimize-tp-sl`
+
+Starts an offline TP/SL grid optimizer job.
+
+The optimizer uses the same archive scanner and tick-level first-barrier simulation as normal scan jobs. It reruns the scan once per TP/SL pair, so it is slower but avoids inferring first-barrier ordering from MFE/MAE alone.
+
+Additional fields:
+
+```text
+tp_grid: list of decimal TP values, for example [0.04, 0.06, 0.08]
+sl_grid: list of decimal SL values, for example [0.05, 0.07]
+```
+
 ### `GET /jobs`
 
 Lists known scan jobs.
@@ -244,6 +257,14 @@ Downloads symbol/day metrics.
 ### `GET /jobs/{job_id}/trades.csv`
 
 Downloads candidate trade simulations.
+
+### `GET /jobs/{job_id}/grid.csv`
+
+Downloads TP/SL grid aggregate output for optimizer jobs.
+
+### `GET /jobs/{job_id}/grid_trades.csv`
+
+Downloads per-combo trade output for optimizer jobs.
 
 ## 9. Output Artifacts
 
