@@ -1,0 +1,12 @@
+# Replace lab.example.com with your domain.
+lab.example.com {
+    encode gzip
+
+    # Streamlit UI
+    reverse_proxy / http://ui:8501
+
+    # Optional direct API path
+    reverse_proxy /api/* http://backend:8000 {
+        uri strip_prefix /api
+    }
+}

@@ -1,0 +1,16 @@
+strategy:
+  min_turnover: 1000000
+  weak_threshold: 9
+  pump_threshold: 9
+  tp_weak: 0.06
+  sl_weak: 0.07
+  tp_pump: 0.08
+  sl_pump: 0.07
+  max_hold_min: 720
+  bar_interval: 5min
+
+universe:
+  exchange: bybit
+  market: linear_usdt_perp
+  exclude_majors: true
+  notes: "Tick-level public archive scan. No live orders."

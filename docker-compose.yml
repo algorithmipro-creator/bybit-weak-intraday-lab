@@ -1,0 +1,26 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: bybit-weak-backend
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
+  ui:
+    build:
+      context: .
+      dockerfile: ui/Dockerfile
+    container_name: bybit-weak-ui
+    environment:
+      - BWI_API_URL=http://backend:8000
+    depends_on:
+      - backend
+    ports:
+      - "8501:8501"
+    restart: unless-stopped

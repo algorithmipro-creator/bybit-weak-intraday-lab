@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+.env
+.venv/
+data/bybit_archive_cache/
+data/jobs/*
+!data/jobs/.gitkeep
+*.log
+.DS_Store
