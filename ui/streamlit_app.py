@@ -12,6 +12,7 @@ import streamlit as st
 
 from ui.account_backtest import AccountBacktestSettings, run_account_backtest
 from ui.result_summary import best_grid_result, trade_result_summary
+from ui.table_totals import append_account_total_row, append_trade_total_row
 
 DEFAULT_API = os.getenv("BWI_API_URL", "http://backend:8000")
 ACTIVE_STATUSES = {"queued", "running"}
@@ -173,7 +174,11 @@ def render_account_backtest(trades: pd.DataFrame) -> None:
         )
 
     with st.expander("Account trade details", expanded=False):
-        st.dataframe(curve, use_container_width=True, hide_index=True)
+        st.dataframe(
+            append_account_total_row(curve, initial_equity_usd=float(summary["initial_equity_usd"])),
+            use_container_width=True,
+            hide_index=True,
+        )
 
 
 def render_causal_overview(signals: pd.DataFrame) -> None:
@@ -358,7 +363,7 @@ if selected_job:
                 st.dataframe(signals, use_container_width=True, hide_index=True)
             with tab2:
                 st.download_button("Download evaluations CSV", evaluations_csv, file_name=f"{selected_job}_evaluations.csv")
-                st.dataframe(evaluations, use_container_width=True, hide_index=True)
+                st.dataframe(append_trade_total_row(evaluations), use_container_width=True, hide_index=True)
             with tab3:
                 if not signals.empty or not evaluations.empty:
                     if {"signal_time_utc", "score", "mode"}.issubset(signals.columns):
@@ -423,7 +428,7 @@ if selected_job:
                 st.dataframe(grid, use_container_width=True, hide_index=True)
             with tab2:
                 st.download_button("Download grid trades CSV", grid_trades_csv, file_name=f"{selected_job}_grid_trades.csv")
-                st.dataframe(grid_trades, use_container_width=True, hide_index=True)
+                st.dataframe(append_trade_total_row(grid_trades), use_container_width=True, hide_index=True)
             with tab3:
                 if not grid.empty and {"tp_pct", "sl_pct", "avg_underlying_pnl"}.issubset(grid.columns):
                     st.plotly_chart(
@@ -463,7 +468,7 @@ if selected_job:
             tab1, tab2, tab3 = st.tabs(["Trades", "Metrics", "Charts"])
             with tab1:
                 st.download_button("Download trades CSV", trades_csv, file_name=f"{selected_job}_trades.csv")
-                st.dataframe(trades, use_container_width=True, hide_index=True)
+                st.dataframe(append_trade_total_row(trades), use_container_width=True, hide_index=True)
             with tab2:
                 st.download_button("Download metrics CSV", metrics_csv, file_name=f"{selected_job}_metrics.csv")
                 st.dataframe(metrics, use_container_width=True, hide_index=True)
