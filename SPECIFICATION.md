@@ -319,6 +319,18 @@ The MVP backend is designed for private/local use. Before exposing it publicly:
 - protect full-universe mode;
 - hide or restrict direct backend access.
 
+Current backend safety limits:
+
+```text
+job_id must match ^[a-f0-9]{12}$
+regular scan range <= 31 days
+full-universe scan range <= 7 days
+full-universe scans must set max_symbols from 1 to 500
+manual symbol lists are capped at 500 symbols
+```
+
+These limits reduce accidental resource exhaustion. They are not a substitute for authentication or reverse-proxy access control.
+
 ### 10.3 Statistical Validation Risk
 
 The sample reports are useful early evidence, not a complete statistical proof.

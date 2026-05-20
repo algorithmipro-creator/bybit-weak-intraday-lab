@@ -163,6 +163,16 @@ GET  /jobs/{job_id}/metrics.csv
 GET  /jobs/{job_id}/trades.csv
 ```
 
+Safety limits in the current backend:
+
+```text
+job_id must match ^[a-f0-9]{12}$
+regular scan range <= 31 days
+full-universe scan range <= 7 days
+full-universe scans must set max_symbols from 1 to 500
+manual symbol lists are capped at 500 symbols
+```
+
 Example:
 
 ```bash

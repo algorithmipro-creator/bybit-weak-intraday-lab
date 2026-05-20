@@ -38,6 +38,8 @@ sudo ufw enable
 
 Avoid exposing port `8000` publicly unless it is protected. For production, put the UI/API behind Caddy or Nginx and restrict API access with authentication, IP allowlists, or a private network.
 
+The backend includes basic request limits for scan range, full-universe scans and job id paths. These are safety rails for private use, not public authentication.
+
 ## Data hygiene
 
 The archive cache can grow quickly. Keep it under `./data/bybit_archive_cache` and periodically remove old symbols/dates:
