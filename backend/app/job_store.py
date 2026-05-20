@@ -10,6 +10,7 @@ from typing import Any
 
 import pandas as pd
 
+from bybit_weak_intraday.causal_scanner import run_archive_causal_scan
 from bybit_weak_intraday.core import StrategyConfig
 from bybit_weak_intraday.optimizer import run_archive_tp_sl_grid
 from bybit_weak_intraday.scanner import run_archive_scan
@@ -155,6 +156,33 @@ def _run_tp_sl_grid_job(job_id: str, meta: dict[str, Any]) -> None:
     )
 
 
+def _run_causal_scan_job(job_id: str, meta: dict[str, Any]) -> None:
+    req = meta["request"]
+    cfg = _strategy_config_from_request(req)
+    signals = run_archive_causal_scan(
+        start=req["start"],
+        end=req["end"],
+        symbols=req.get("symbols") or [],
+        full_universe=req.get("full_universe", False),
+        include_majors=req.get("include_majors", False),
+        max_symbols=req.get("max_symbols", 0),
+        cache_dir=settings.cache_dir,
+        cfg=cfg,
+    )
+    out_dir = job_dir(job_id)
+    signals_path = out_dir / "signals.csv"
+    signals.to_csv(signals_path, index=False)
+    meta.update(
+        {
+            "status": "done",
+            "updated_at": now_iso(),
+            "message": "causal scan complete",
+            "signals_rows": int(len(signals)),
+            "signals_path": str(signals_path),
+        }
+    )
+
+
 def run_job(job_id: str) -> None:
     meta = load_meta(job_id)
     if not meta:
@@ -162,7 +190,9 @@ def run_job(job_id: str) -> None:
     meta.update({"status": "running", "updated_at": now_iso(), "message": "scan running"})
     save_meta(job_id, meta)
     try:
-        if meta.get("job_type") == "tp_sl_grid":
+        if meta.get("job_type") == "causal_scan":
+            _run_causal_scan_job(job_id, meta)
+        elif meta.get("job_type") == "tp_sl_grid":
             _run_tp_sl_grid_job(job_id, meta)
         else:
             _run_scan_job(job_id, meta)
