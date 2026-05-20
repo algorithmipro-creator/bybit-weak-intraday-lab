@@ -75,3 +75,24 @@ def test_find_causal_signals_emits_weak_without_future_ticks():
     assert weak[0].signal_price < weak[0].vwap_at_signal
     assert weak[0].signal_price != 200
     assert weak[0].turnover_so_far_usdt == 468_000
+
+
+def test_find_causal_signals_emits_pump_after_vwap_loss():
+    prev = _ticks(
+        prices=[1, 1, 1, 1],
+        sides=["Buy", "Sell", "Buy", "Sell"],
+        start_ts=1773705600,
+    )
+    cur = _ticks(
+        prices=[10, 12, 15, 14, 13, 11, 10.5],
+        sides=["Buy", "Buy", "Buy", "Sell", "Sell", "Sell", "Sell"],
+    )
+    cfg = StrategyConfig(min_turnover=0, weak_threshold=99, pump_threshold=8)
+
+    signals = find_causal_signals("PUMPUSDT", "2026-03-18", cur, prev, cfg)
+
+    pump = [s for s in signals if s.mode == "pump"]
+    assert len(pump) == 1
+    assert pump[0].pump_score >= 8
+    assert pump[0].runup_so_far_pct >= 25
+    assert pump[0].signal_price < pump[0].vwap_at_signal

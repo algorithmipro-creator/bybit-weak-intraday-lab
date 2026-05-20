@@ -130,7 +130,7 @@ def find_causal_signals(
         bars_so_far = bars.iloc[: int(i) + 1].copy()
         turnover_so_far = float(ticks_so_far["quote"].sum())
         turnover_ratio = turnover_so_far / prev["prev_turnover_usdt"]
-        runup, _, _ = _runup_so_far(bars_so_far)
+        runup, _, run_peak = _runup_so_far(bars_so_far)
         peak_idx = int(np.nanargmax(bars_so_far["high"].to_numpy(float)))
         peak_time = bars_so_far.iloc[peak_idx]["dt"]
         peak_hour = peak_time.hour + peak_time.minute / 60
@@ -153,6 +153,26 @@ def find_causal_signals(
             weak_score += 1
 
         pump_score = 0
+        if turnover_ratio >= 8:
+            pump_score += 2
+        if turnover_ratio >= 15:
+            pump_score += 1
+        if runup * 100 >= 25:
+            pump_score += 2
+        pump_peak_time = bars_so_far.iloc[run_peak]["dt"]
+        pump_peak_hour = pump_peak_time.hour + pump_peak_time.minute / 60
+        if 7 <= pump_peak_hour <= 11.5:
+            pump_score += 1
+        pump_score += 2
+        low = float(bars_so_far.iloc[0 : run_peak + 1]["low"].min())
+        high = float(bars_so_far.iloc[run_peak]["high"])
+        midpoint = low + 0.5 * (high - low)
+        if float(row["close"]) < midpoint:
+            pump_score += 1
+        pump_peak_ts = _timestamp_to_tick_units(pump_peak_time, cur_ticks)
+        pump_sell_share = sell_share_between(cur_ticks, pump_peak_ts, signal_ns)
+        if pump_sell_share >= 52:
+            pump_score += 1
 
         if (
             "weak" not in emitted_modes
@@ -179,5 +199,31 @@ def find_causal_signals(
                 )
             )
             emitted_modes.add("weak")
+
+        if (
+            "pump" not in emitted_modes
+            and turnover_so_far >= cfg.min_turnover
+            and pump_score >= cfg.pump_threshold
+        ):
+            signals.append(
+                CausalSignal(
+                    date=str(day),
+                    symbol=symbol,
+                    mode="pump",
+                    signal_time_utc=row["dt"].isoformat(),
+                    signal_price=float(row["close"]),
+                    score=pump_score,
+                    weak_score=weak_score,
+                    pump_score=pump_score,
+                    turnover_so_far_usdt=turnover_so_far,
+                    prev_turnover_usdt=prev["prev_turnover_usdt"],
+                    turnover_ratio_so_far=turnover_ratio,
+                    runup_so_far_pct=runup * 100,
+                    peak_time_utc=pump_peak_time.isoformat(),
+                    vwap_at_signal=float(row["vwap"]),
+                    sell_share_peak_to_signal_pct=pump_sell_share,
+                )
+            )
+            emitted_modes.add("pump")
 
     return signals
