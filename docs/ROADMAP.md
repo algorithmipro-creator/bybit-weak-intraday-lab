@@ -17,7 +17,7 @@ Deliverables:
 
 Goal: separate historical labeling from live-signal-safe calculations.
 
-Status: causal core implemented in `bybit_weak_intraday/causal.py`; backend/UI causal scan integration is available through `POST /jobs/scan-causal` and the Streamlit "Causal signal scan" mode.
+Status: causal core implemented in `bybit_weak_intraday/causal.py`; backend/UI causal scan integration is available through `POST /jobs/scan-causal` and the Streamlit "Causal signal scan" mode. Causal jobs now keep no-lookahead `signals.csv` separate from post-signal `evaluations.csv`.
 
 Detailed implementation plan:
 
@@ -30,8 +30,9 @@ Tasks:
 1. Add causal signal functions that only use data available at the signal timestamp. Initial implementation complete.
 2. Keep current full-day scanner as historical research mode.
 3. Add tests for no-look-ahead behavior. Initial implementation complete.
-4. Add known fixture datasets for reproducible strategy tests.
-5. Document which fields are historical-only and which are causal-safe.
+4. Add post-signal evaluation for causal signals. Initial implementation complete.
+5. Add known fixture datasets for reproducible strategy tests.
+6. Document which fields are historical-only and which are causal-safe.
 
 Success criteria:
 

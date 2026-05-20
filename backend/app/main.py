@@ -75,6 +75,7 @@ def job(job_id: JobId) -> dict:
     if meta.get("status") == "done":
         if meta.get("job_type") == "causal_scan":
             meta["signals_url"] = f"/jobs/{job_id}/signals.csv"
+            meta["evaluations_url"] = f"/jobs/{job_id}/evaluations.csv"
         elif meta.get("job_type") == "tp_sl_grid":
             meta["grid_url"] = f"/jobs/{job_id}/grid.csv"
             meta["grid_trades_url"] = f"/jobs/{job_id}/grid_trades.csv"
@@ -104,6 +105,11 @@ def trades_csv(job_id: JobId) -> FileResponse:
 @app.get("/jobs/{job_id}/signals.csv")
 def signals_csv(job_id: JobId) -> FileResponse:
     return FileResponse(_job_file(job_id, "signals.csv"), media_type="text/csv", filename=f"{job_id}_signals.csv")
+
+
+@app.get("/jobs/{job_id}/evaluations.csv")
+def evaluations_csv(job_id: JobId) -> FileResponse:
+    return FileResponse(_job_file(job_id, "evaluations.csv"), media_type="text/csv", filename=f"{job_id}_evaluations.csv")
 
 
 @app.get("/jobs/{job_id}/grid.csv")

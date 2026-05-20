@@ -190,6 +190,21 @@ def render_causal_overview(signals: pd.DataFrame) -> None:
         st.warning("No causal signals matched this job's filters.")
 
 
+def render_causal_evaluation_overview(evaluations: pd.DataFrame) -> None:
+    st.subheader("Post-Signal Evaluation")
+    summary = trade_result_summary(evaluations)
+    cols = st.columns(7)
+    cols[0].metric("Evaluated", int(summary["trades"]))
+    cols[1].metric("TP rate", pct(summary["tp_rate_pct"]))
+    cols[2].metric("SL rate", pct(summary["sl_rate_pct"]))
+    cols[3].metric("Avg PnL", pct(summary["avg_pnl_pct"]))
+    cols[4].metric("Median PnL", pct(summary["median_pnl_pct"]))
+    cols[5].metric("Avg MFE", pct(summary["avg_mfe_pct"]))
+    cols[6].metric("Avg MAE", pct(summary["avg_mae_pct"]))
+    if evaluations.empty:
+        st.info("No post-signal evaluation rows for this causal job.")
+
+
 def render_grid_overview(grid: pd.DataFrame) -> None:
     st.subheader("Best grid result")
     best = best_grid_result(grid)
@@ -279,6 +294,7 @@ try:
                 "metrics_rows",
                 "trades_rows",
                 "signals_rows",
+                "evaluations_rows",
                 "grid_rows",
                 "grid_trades_rows",
                 "created_at",
@@ -313,7 +329,7 @@ if selected_job:
         c1.metric("Status", meta.get("status") or "unknown")
         c2.metric("Type", meta.get("job_type") or "scan")
         c3.metric("Result rows", meta.get("metrics_rows") or meta.get("grid_rows") or meta.get("signals_rows") or 0)
-        c4.metric("Trade rows", meta.get("trades_rows") or meta.get("grid_trades_rows") or 0)
+        c4.metric("Trade rows", meta.get("trades_rows") or meta.get("grid_trades_rows") or meta.get("evaluations_rows") or 0)
         c5.metric("Updated", (meta.get("updated_at") or "")[:19])
         render_job_status(meta)
 
@@ -323,20 +339,28 @@ if selected_job:
             st.rerun()
         elif status == "done" and meta.get("job_type") == "causal_scan":
             signals_csv = ""
+            evaluations_csv = ""
             try:
                 signals_csv = api_get(f"/jobs/{selected_job}/signals.csv", api_url).text
+                evaluations_csv = api_get(f"/jobs/{selected_job}/evaluations.csv", api_url).text
                 signals = csv_to_frame(signals_csv)
+                evaluations = csv_to_frame(evaluations_csv)
             except Exception as exc:
-                st.error(f"Failed to load causal signals: {exc}")
+                st.error(f"Failed to load causal results: {exc}")
                 signals = pd.DataFrame()
+                evaluations = pd.DataFrame()
 
             render_causal_overview(signals)
-            tab1, tab2 = st.tabs(["Signals", "Charts"])
+            render_causal_evaluation_overview(evaluations)
+            tab1, tab2, tab3 = st.tabs(["Signals", "Evaluations", "Charts"])
             with tab1:
                 st.download_button("Download signals CSV", signals_csv, file_name=f"{selected_job}_signals.csv")
                 st.dataframe(signals, use_container_width=True, hide_index=True)
             with tab2:
-                if not signals.empty:
+                st.download_button("Download evaluations CSV", evaluations_csv, file_name=f"{selected_job}_evaluations.csv")
+                st.dataframe(evaluations, use_container_width=True, hide_index=True)
+            with tab3:
+                if not signals.empty or not evaluations.empty:
                     if {"signal_time_utc", "score", "mode"}.issubset(signals.columns):
                         st.plotly_chart(
                             px.scatter(
@@ -351,8 +375,34 @@ if selected_job:
                         )
                     if "mode" in signals.columns:
                         st.plotly_chart(px.histogram(signals, x="mode", title="Causal signal modes"), use_container_width=True)
+                    if not evaluations.empty and {"mfe_after_entry_pct", "mae_after_entry_pct", "mode"}.issubset(evaluations.columns):
+                        st.plotly_chart(
+                            px.scatter(
+                                evaluations,
+                                x="mae_after_entry_pct",
+                                y="mfe_after_entry_pct",
+                                color="mode",
+                                hover_data=["symbol", "date", "outcome", "pnl_underlying_pct"],
+                                title="Causal MFE vs MAE after signal",
+                            ),
+                            use_container_width=True,
+                        )
+                    if not evaluations.empty and "outcome" in evaluations.columns:
+                        st.plotly_chart(px.histogram(evaluations, x="outcome", title="Causal evaluation outcomes"), use_container_width=True)
+                    if not evaluations.empty and {"score", "pnl_underlying_pct", "mode"}.issubset(evaluations.columns):
+                        st.plotly_chart(
+                            px.scatter(
+                                evaluations,
+                                x="score",
+                                y="pnl_underlying_pct",
+                                color="mode",
+                                hover_data=["symbol", "date", "outcome"],
+                                title="Causal score vs post-signal PnL",
+                            ),
+                            use_container_width=True,
+                        )
                 else:
-                    st.info("No causal signal rows in this job.")
+                    st.info("No causal result rows in this job.")
         elif status == "done" and meta.get("job_type") == "tp_sl_grid":
             grid_csv = ""
             grid_trades_csv = ""
