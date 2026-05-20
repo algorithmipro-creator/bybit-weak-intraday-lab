@@ -7,3 +7,4 @@ data/jobs/*
 !data/jobs/.gitkeep
 *.log
 .DS_Store
+.worktrees/
