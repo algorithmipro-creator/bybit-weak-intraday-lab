@@ -95,6 +95,18 @@ Before paper/live alerting, the next key step is to separate:
 
 See [SPECIFICATION.md](SPECIFICATION.md) for details.
 
+## Causal Signal Mode
+
+The repository now includes a separate causal signal core in `bybit_weak_intraday/causal.py`.
+
+Historical scanner output is useful for labeling and research. Causal signal output is designed to use only data available at the signal timestamp.
+
+This distinction is important:
+
+- historical mode can analyze what happened during the full day;
+- causal mode can only evaluate what was known before or at the candidate signal bar;
+- post-signal MFE/MAE and TP/SL evaluation must stay separate from signal generation.
+
 ## Quick Start
 
 ### Local Python

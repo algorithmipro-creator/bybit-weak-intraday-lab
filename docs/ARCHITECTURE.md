@@ -36,6 +36,7 @@ Path:
 
 ```text
 bybit_weak_intraday/core.py
+bybit_weak_intraday/causal.py
 ```
 
 Responsibilities:
@@ -48,6 +49,8 @@ Responsibilities:
 - simulate hypothetical short TP/SL exits.
 
 The core is exchange-execution agnostic. It does not place orders.
+
+`core.py` contains the historical research scanner primitives. `causal.py` contains live-scan-safe signal primitives that must only use data available at the signal timestamp.
 
 ### Archive Layer
 
