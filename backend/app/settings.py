@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     data_dir: Path = Path("/app/data")
     cache_dir: Path = Path("/app/data/bybit_archive_cache")
     jobs_dir: Path = Path("/app/data/jobs")
-    max_workers: int = 2
+    max_workers: int = 1
     cors_origins: str = "*"
 
 
