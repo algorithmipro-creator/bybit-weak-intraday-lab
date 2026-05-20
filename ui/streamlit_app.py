@@ -1,29 +1,32 @@
 from __future__ import annotations
 
 import os
+import time
 from io import StringIO
+from typing import Any
 
 import pandas as pd
 import plotly.express as px
 import requests
 import streamlit as st
 
+from ui.result_summary import best_grid_result, trade_result_summary
+
 DEFAULT_API = os.getenv("BWI_API_URL", "http://backend:8000")
+ACTIVE_STATUSES = {"queued", "running"}
 
 st.set_page_config(page_title="Bybit Weak Intraday Lab", layout="wide")
 st.title("Bybit Weak Intraday Lab")
 st.caption("Research dashboard for weak-continuation and pump-and-fade Bybit USDT-perp scans. No live orders.")
 
-api_url = st.sidebar.text_input("Backend API URL", DEFAULT_API).rstrip("/")
 
-
-def api_get(path: str):
+def api_get(path: str, api_url: str):
     r = requests.get(f"{api_url}{path}", timeout=30)
     r.raise_for_status()
     return r
 
 
-def api_post(path: str, payload: dict):
+def api_post(path: str, payload: dict, api_url: str):
     r = requests.post(f"{api_url}{path}", json=payload, timeout=30)
     r.raise_for_status()
     return r
@@ -33,7 +36,69 @@ def parse_float_grid(value: str) -> list[float]:
     return [float(x.strip()) for x in value.replace("\n", ",").split(",") if x.strip()]
 
 
+def csv_to_frame(csv_text: str) -> pd.DataFrame:
+    return pd.read_csv(StringIO(csv_text)) if csv_text.strip() else pd.DataFrame()
+
+
+def pct(value: Any, multiplier: float = 1.0) -> str:
+    if value is None or pd.isna(value):
+        return "n/a"
+    return f"{float(value) * multiplier:.2f}%"
+
+
+def number(value: Any, decimals: int = 2) -> str:
+    if value is None or pd.isna(value):
+        return "n/a"
+    return f"{float(value):.{decimals}f}"
+
+
+def render_job_status(meta: dict) -> None:
+    status = str(meta.get("status") or "unknown")
+    message = meta.get("message") or ""
+    if status == "error":
+        st.error(message or "Job failed before writing result files.")
+    elif status in ACTIVE_STATUSES:
+        st.info(message or "Job is still running.")
+    elif status == "done":
+        st.success(message or "Job complete.")
+    else:
+        st.warning(message or f"Job status: {status}")
+
+
+def render_scan_overview(trades: pd.DataFrame) -> None:
+    summary = trade_result_summary(trades)
+    st.subheader("Result overview")
+    cols = st.columns(7)
+    cols[0].metric("Trades", int(summary["trades"]))
+    cols[1].metric("TP rate", pct(summary["tp_rate_pct"]))
+    cols[2].metric("SL rate", pct(summary["sl_rate_pct"]))
+    cols[3].metric("Avg PnL", pct(summary["avg_pnl_pct"]))
+    cols[4].metric("Median PnL", pct(summary["median_pnl_pct"]))
+    cols[5].metric("Avg MFE", pct(summary["avg_mfe_pct"]))
+    cols[6].metric("Avg MAE", pct(summary["avg_mae_pct"]))
+    if summary["trades"] == 0:
+        st.warning("No candidate trades matched this job's filters.")
+
+
+def render_grid_overview(grid: pd.DataFrame) -> None:
+    st.subheader("Best grid result")
+    best = best_grid_result(grid)
+    if best is None:
+        st.warning("No TP/SL grid combination produced candidate trades.")
+        return
+    cols = st.columns(6)
+    cols[0].metric("Best TP", pct(best.get("tp_pct")))
+    cols[1].metric("Best SL", pct(best.get("sl_pct")))
+    cols[2].metric("Trades", int(best.get("trades") or 0))
+    cols[3].metric("Avg PnL", pct(best.get("avg_underlying_pnl")))
+    cols[4].metric("TP rate", pct(best.get("tp_rate"), multiplier=100))
+    cols[5].metric("Avg exit min", number(best.get("avg_minutes_to_exit"), decimals=0))
+
+
 with st.sidebar:
+    api_url = st.text_input("Backend API URL", DEFAULT_API).rstrip("/")
+    auto_refresh = st.checkbox("Auto-refresh active jobs", value=True)
+
     st.header("Scan settings")
     job_mode = st.radio("Job type", ["Archive scan", "TP/SL optimizer"], horizontal=True)
     start = st.text_input("Start date", "2026-03-18")
@@ -78,18 +143,43 @@ if run:
             payload["tp_grid"] = parse_float_grid(tp_grid_raw)
             payload["sl_grid"] = parse_float_grid(sl_grid_raw)
             path = "/jobs/optimize-tp-sl"
-        resp = api_post(path, payload).json()
+        resp = api_post(path, payload, api_url).json()
+        st.session_state["selected_job_id"] = resp["job_id"]
         st.success(f"Job queued: {resp['job_id']}")
     except Exception as exc:
         st.error(f"Failed to start job: {exc}")
 
 st.header("Jobs")
 try:
-    jobs = api_get("/jobs").json()
+    jobs = api_get("/jobs", api_url).json()
     if jobs:
         jobs_df = pd.DataFrame(jobs)
-        st.dataframe(jobs_df, use_container_width=True)
-        selected_job = st.selectbox("Open job", jobs_df["job_id"].tolist())
+        if "created_at" in jobs_df.columns:
+            jobs_df = jobs_df.sort_values("created_at", ascending=False, na_position="last")
+
+        display_columns = [
+            col
+            for col in [
+                "job_id",
+                "job_type",
+                "status",
+                "message",
+                "metrics_rows",
+                "trades_rows",
+                "grid_rows",
+                "grid_trades_rows",
+                "created_at",
+                "updated_at",
+            ]
+            if col in jobs_df.columns
+        ]
+        st.dataframe(jobs_df[display_columns], use_container_width=True, hide_index=True)
+
+        job_ids = jobs_df["job_id"].tolist()
+        selected_from_state = st.session_state.get("selected_job_id")
+        default_index = job_ids.index(selected_from_state) if selected_from_state in job_ids else 0
+        selected_job = st.selectbox("Open job", job_ids, index=default_index)
+        st.session_state["selected_job_id"] = selected_job
     else:
         st.info("No jobs yet. Start a scan from the sidebar.")
         selected_job = None
@@ -98,89 +188,118 @@ except Exception as exc:
     selected_job = None
 
 if selected_job:
-    meta = api_get(f"/jobs/{selected_job}").json()
-    st.subheader(f"Job {selected_job}")
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Status", meta.get("status"))
-    c2.metric("Metrics rows", meta.get("metrics_rows") or 0)
-    c3.metric("Trades rows", meta.get("trades_rows") or 0)
-    c4.metric("Updated", (meta.get("updated_at") or "")[:19])
-    st.code(meta.get("message") or "", language="text")
+    try:
+        meta = api_get(f"/jobs/{selected_job}", api_url).json()
+    except Exception as exc:
+        st.error(f"Failed to load selected job: {exc}")
+        meta = None
 
-    if meta.get("status") == "done" and meta.get("job_type") == "tp_sl_grid":
-        grid_csv = api_get(f"/jobs/{selected_job}/grid.csv").text
-        grid_trades_csv = api_get(f"/jobs/{selected_job}/grid_trades.csv").text
-        grid = pd.read_csv(StringIO(grid_csv)) if grid_csv.strip() else pd.DataFrame()
-        grid_trades = pd.read_csv(StringIO(grid_trades_csv)) if grid_trades_csv.strip() else pd.DataFrame()
+    if meta:
+        st.subheader(f"Selected job: {selected_job}")
+        c1, c2, c3, c4, c5 = st.columns(5)
+        c1.metric("Status", meta.get("status") or "unknown")
+        c2.metric("Type", meta.get("job_type") or "scan")
+        c3.metric("Result rows", meta.get("metrics_rows") or meta.get("grid_rows") or 0)
+        c4.metric("Trade rows", meta.get("trades_rows") or meta.get("grid_trades_rows") or 0)
+        c5.metric("Updated", (meta.get("updated_at") or "")[:19])
+        render_job_status(meta)
 
-        tab1, tab2, tab3 = st.tabs(["Grid Summary", "Grid Trades", "Charts"])
-        with tab1:
-            st.download_button("Download grid CSV", grid_csv, file_name=f"{selected_job}_grid.csv")
-            st.dataframe(grid, use_container_width=True)
-        with tab2:
-            st.download_button("Download grid trades CSV", grid_trades_csv, file_name=f"{selected_job}_grid_trades.csv")
-            st.dataframe(grid_trades, use_container_width=True)
-        with tab3:
-            if not grid.empty and {"tp_pct", "sl_pct", "avg_underlying_pnl"}.issubset(grid.columns):
-                st.plotly_chart(
-                    px.scatter(
-                        grid,
-                        x="tp_pct",
-                        y="sl_pct",
-                        size="trades",
-                        color="avg_underlying_pnl",
-                        hover_data=["tp_rate", "sl_rate", "avg_minutes_to_exit"],
-                        title="TP/SL grid average PnL",
-                    ),
-                    use_container_width=True,
-                )
-            if not grid_trades.empty and {"outcome", "tp_pct", "sl_pct"}.issubset(grid_trades.columns):
-                st.plotly_chart(px.histogram(grid_trades, x="outcome", color="tp_pct", title="Grid outcomes"), use_container_width=True)
-            if grid.empty and grid_trades.empty:
-                st.info("No optimizer results in this job.")
+        status = meta.get("status")
+        if status in ACTIVE_STATUSES and auto_refresh:
+            time.sleep(3)
+            st.rerun()
+        elif status == "done" and meta.get("job_type") == "tp_sl_grid":
+            grid_csv = ""
+            grid_trades_csv = ""
+            try:
+                grid_csv = api_get(f"/jobs/{selected_job}/grid.csv", api_url).text
+                grid_trades_csv = api_get(f"/jobs/{selected_job}/grid_trades.csv", api_url).text
+                grid = csv_to_frame(grid_csv)
+                grid_trades = csv_to_frame(grid_trades_csv)
+            except Exception as exc:
+                st.error(f"Failed to load optimizer results: {exc}")
+                grid = pd.DataFrame()
+                grid_trades = pd.DataFrame()
 
-    elif meta.get("status") == "done":
-        trades_csv = api_get(f"/jobs/{selected_job}/trades.csv").text
-        metrics_csv = api_get(f"/jobs/{selected_job}/metrics.csv").text
-        trades = pd.read_csv(StringIO(trades_csv)) if trades_csv.strip() else pd.DataFrame()
-        metrics = pd.read_csv(StringIO(metrics_csv)) if metrics_csv.strip() else pd.DataFrame()
-
-        tab1, tab2, tab3 = st.tabs(["Trades", "Metrics", "Charts"])
-        with tab1:
-            st.download_button("Download trades CSV", trades_csv, file_name=f"{selected_job}_trades.csv")
-            st.dataframe(trades, use_container_width=True)
-        with tab2:
-            st.download_button("Download metrics CSV", metrics_csv, file_name=f"{selected_job}_metrics.csv")
-            st.dataframe(metrics, use_container_width=True)
-        with tab3:
-            if not trades.empty:
-                left, right = st.columns(2)
-                with left:
-                    st.plotly_chart(px.bar(trades, x="outcome", title="Outcomes"), use_container_width=True)
-                with right:
-                    if {"mfe_after_entry_pct", "mae_after_entry_pct", "mode"}.issubset(trades.columns):
-                        st.plotly_chart(
-                            px.scatter(
-                                trades,
-                                x="mae_after_entry_pct",
-                                y="mfe_after_entry_pct",
-                                color="mode",
-                                hover_data=["symbol", "date", "outcome"],
-                                title="MFE vs MAE after entry",
-                            ),
-                            use_container_width=True,
-                        )
-                if {"candidate_score", "turnover_usdt", "symbol"}.issubset(trades.columns):
+            render_grid_overview(grid)
+            tab1, tab2, tab3 = st.tabs(["Grid Summary", "Grid Trades", "Charts"])
+            with tab1:
+                st.download_button("Download grid CSV", grid_csv, file_name=f"{selected_job}_grid.csv")
+                st.dataframe(grid, use_container_width=True, hide_index=True)
+            with tab2:
+                st.download_button("Download grid trades CSV", grid_trades_csv, file_name=f"{selected_job}_grid_trades.csv")
+                st.dataframe(grid_trades, use_container_width=True, hide_index=True)
+            with tab3:
+                if not grid.empty and {"tp_pct", "sl_pct", "avg_underlying_pnl"}.issubset(grid.columns):
                     st.plotly_chart(
                         px.scatter(
-                            trades,
-                            x="candidate_score",
-                            y="turnover_usdt",
-                            size="mfe_after_entry_pct" if "mfe_after_entry_pct" in trades.columns else None,
-                            hover_data=["symbol", "date", "mode", "outcome"],
-                            title="Score vs turnover",
+                            grid,
+                            x="tp_pct",
+                            y="sl_pct",
+                            size="trades",
+                            color="avg_underlying_pnl",
+                            hover_data=["tp_rate", "sl_rate", "avg_minutes_to_exit"],
+                            title="TP/SL grid average PnL",
                         ),
                         use_container_width=True,
                     )
-            else:
-                st.info("No candidate trades in this job.")
+                if not grid_trades.empty and {"outcome", "tp_pct", "sl_pct"}.issubset(grid_trades.columns):
+                    st.plotly_chart(
+                        px.histogram(grid_trades, x="outcome", color="tp_pct", title="Grid outcomes"),
+                        use_container_width=True,
+                    )
+                if grid.empty and grid_trades.empty:
+                    st.info("No optimizer result files contain rows.")
+        elif status == "done":
+            trades_csv = ""
+            metrics_csv = ""
+            try:
+                trades_csv = api_get(f"/jobs/{selected_job}/trades.csv", api_url).text
+                metrics_csv = api_get(f"/jobs/{selected_job}/metrics.csv", api_url).text
+                trades = csv_to_frame(trades_csv)
+                metrics = csv_to_frame(metrics_csv)
+            except Exception as exc:
+                st.error(f"Failed to load scan results: {exc}")
+                trades = pd.DataFrame()
+                metrics = pd.DataFrame()
+
+            render_scan_overview(trades)
+            tab1, tab2, tab3 = st.tabs(["Trades", "Metrics", "Charts"])
+            with tab1:
+                st.download_button("Download trades CSV", trades_csv, file_name=f"{selected_job}_trades.csv")
+                st.dataframe(trades, use_container_width=True, hide_index=True)
+            with tab2:
+                st.download_button("Download metrics CSV", metrics_csv, file_name=f"{selected_job}_metrics.csv")
+                st.dataframe(metrics, use_container_width=True, hide_index=True)
+            with tab3:
+                if not trades.empty:
+                    left, right = st.columns(2)
+                    with left:
+                        st.plotly_chart(px.histogram(trades, x="outcome", title="Outcomes"), use_container_width=True)
+                    with right:
+                        if {"mfe_after_entry_pct", "mae_after_entry_pct", "mode"}.issubset(trades.columns):
+                            st.plotly_chart(
+                                px.scatter(
+                                    trades,
+                                    x="mae_after_entry_pct",
+                                    y="mfe_after_entry_pct",
+                                    color="mode",
+                                    hover_data=["symbol", "date", "outcome"],
+                                    title="MFE vs MAE after entry",
+                                ),
+                                use_container_width=True,
+                            )
+                    if {"candidate_score", "turnover_usdt", "symbol"}.issubset(trades.columns):
+                        st.plotly_chart(
+                            px.scatter(
+                                trades,
+                                x="candidate_score",
+                                y="turnover_usdt",
+                                size="mfe_after_entry_pct" if "mfe_after_entry_pct" in trades.columns else None,
+                                hover_data=["symbol", "date", "mode", "outcome"],
+                                title="Score vs turnover",
+                            ),
+                            use_container_width=True,
+                        )
+                else:
+                    st.info("No candidate trades in this job.")
