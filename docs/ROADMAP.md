@@ -17,6 +17,8 @@ Deliverables:
 
 Goal: separate historical labeling from live-signal-safe calculations.
 
+Status: initial causal core implemented in `bybit_weak_intraday/causal.py`; backend/UI integration remains future work.
+
 Detailed implementation plan:
 
 ```text

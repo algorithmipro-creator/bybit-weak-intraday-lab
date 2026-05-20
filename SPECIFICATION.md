@@ -331,6 +331,21 @@ Before trading decisions:
 - compare against random/control symbols;
 - evaluate false positives and opportunity frequency.
 
+### 10.4 Causal Mode Boundary
+
+Causal mode keeps signal generation separate from post-signal evaluation.
+
+Signal generation cannot use:
+
+- MFE or MAE;
+- full-day current turnover;
+- future sell share;
+- future high/low;
+- TP/SL outcome;
+- full-day path metrics that are only known after the day is complete.
+
+Post-signal evaluation may use future ticks only after a signal has already been emitted.
+
 ## 11. Testing
 
 Current tests cover:
