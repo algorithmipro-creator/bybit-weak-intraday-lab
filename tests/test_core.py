@@ -20,6 +20,22 @@ def test_normalize_ticks_computes_quote_when_missing():
     assert out["dt"].dt.tz is not None
 
 
+def test_normalize_ticks_stores_timestamp_in_nanoseconds():
+    df = pd.DataFrame(
+        {
+            "timestamp": [1773792000.0655],
+            "side": ["Sell"],
+            "size": [10],
+            "price": [2.0],
+        }
+    )
+
+    out = normalize_ticks(df)
+
+    assert out.loc[0, "ts_ns"] == out.loc[0, "dt"].value
+    assert out.loc[0, "ts_ns"] > 10**18
+
+
 def test_path_metrics_from_bars():
     ticks = pd.DataFrame(
         {
