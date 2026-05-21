@@ -7,6 +7,7 @@ from typing import Any
 
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 import requests
 import streamlit as st
 
@@ -17,6 +18,13 @@ from ui.bot_monitor import (
     normalize_positions,
     select_latest_scanner_job,
     summarize_wallet,
+)
+from ui.bot_monitor_visual import (
+    VisualMetric,
+    VisualPill,
+    build_executive_overview_html,
+    build_visual_panels_html,
+    monitor_visual_css,
 )
 from ui.result_summary import best_grid_result, trade_result_summary
 from ui.table_totals import append_account_total_row, append_trade_total_row
@@ -105,12 +113,6 @@ def signed_money(value: Any) -> str:
     parsed = float(value)
     sign = "+" if parsed > 0 else ""
     return f"{sign}${parsed:,.2f}"
-
-
-def compact_count(value: Any) -> str:
-    if value is None or pd.isna(value):
-        return "0"
-    return str(int(value))
 
 
 def render_job_status(meta: dict) -> None:
@@ -312,6 +314,147 @@ def _load_scanner_watchlist(api_url: str, jobs: list[dict]) -> pd.DataFrame:
         return pd.DataFrame()
 
 
+def _status_tone(value: bool | None) -> str:
+    return "success" if value else "warning"
+
+
+def _monitor_status_label(health_error: str | None, status_payload: dict) -> str:
+    if health_error:
+        return "BACKEND OFFLINE"
+    if status_payload.get("mode") == "demo" and status_payload.get("configured"):
+        return "DEMO CONNECTED"
+    if status_payload.get("mode") == "demo":
+        return "DEMO CONFIG NEEDED"
+    return "MONITOR CHECK"
+
+
+def _render_variant_a_visual_overview(
+    *,
+    health_error: str | None,
+    status_payload: dict,
+    limits: dict,
+    execution_token: str,
+    wallet_summary: dict,
+    positions_rows: list[dict],
+    orders_rows: list[dict],
+    scanner_watchlist: pd.DataFrame,
+) -> None:
+    scanner_count = len(scanner_watchlist)
+    metrics = [
+        VisualMetric(
+            "Equity",
+            money(wallet_summary.get("equity")),
+            detail=f"Wallet {money(wallet_summary.get('wallet_balance'))} | Available {money(wallet_summary.get('available_balance'))}",
+        ),
+        VisualMetric(
+            "Unreal PnL",
+            signed_money(wallet_summary.get("unrealized_pnl")),
+            _pnl_tone(wallet_summary.get("unrealized_pnl")),
+        ),
+        VisualMetric(
+            "Margin",
+            money(wallet_summary.get("margin_used")),
+            detail=f"Positions {len(positions_rows)} | Orders {len(orders_rows)}",
+        ),
+        VisualMetric("Signals", f"{scanner_count} waiting" if scanner_count else "0 waiting", "accent"),
+    ]
+    pills = [
+        VisualPill("Backend", "online" if not health_error else "offline", _status_tone(not health_error)),
+        VisualPill("Mode", str(status_payload.get("mode") or "unknown"), _status_tone(status_payload.get("mode") == "demo")),
+        VisualPill("Execution", "enabled" if status_payload.get("enabled") else "disabled", _status_tone(status_payload.get("enabled"))),
+        VisualPill("Keys", "configured" if status_payload.get("configured") else "missing", _status_tone(status_payload.get("configured"))),
+        VisualPill("Token", "entered" if execution_token else "locked", _status_tone(bool(execution_token))),
+        VisualPill("Positions", str(len(positions_rows)), "muted"),
+        VisualPill("Orders", str(len(orders_rows)), "muted"),
+        VisualPill("Max notional", money(limits.get("max_demo_notional_usdt")), "muted"),
+    ]
+    subtitle = "Demo account control room: connection, account risk, active position state, and scanner candidates."
+    st.html(monitor_visual_css())
+    st.html(
+        build_executive_overview_html(
+            status_label=_monitor_status_label(health_error, status_payload),
+            subtitle=subtitle,
+            pills=pills,
+            metrics=metrics,
+        )
+    )
+    st.html(
+        build_visual_panels_html(
+            position_rows=positions_rows,
+            watchlist_rows=scanner_watchlist.head(4).to_dict(orient="records") if not scanner_watchlist.empty else [],
+        )
+    )
+
+
+def _pnl_tone(value: Any) -> str:
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return "neutral"
+    if parsed > 0:
+        return "success"
+    if parsed < 0:
+        return "negative"
+    return "neutral"
+
+
+def _style_monitor_figure(fig: go.Figure, *, height: int = 250) -> go.Figure:
+    fig.update_layout(
+        height=height,
+        margin=dict(l=12, r=12, t=40, b=24),
+        paper_bgcolor="#101418",
+        plot_bgcolor="#101418",
+        font=dict(color="#dbe3ea", size=12),
+        title_font=dict(color="#f8fafc", size=15),
+        xaxis=dict(gridcolor="#26313c", zerolinecolor="#2b3743"),
+        yaxis=dict(gridcolor="#26313c", zerolinecolor="#2b3743"),
+        showlegend=False,
+    )
+    return fig
+
+
+def _render_monitor_visual_charts(positions_frame: pd.DataFrame, scanner_watchlist: pd.DataFrame) -> None:
+    chart_left, chart_right = st.columns(2)
+    with chart_left:
+        st.markdown("**Position PnL**")
+        if positions_frame.empty or not {"symbol", "unrealized_pnl"}.issubset(positions_frame.columns):
+            st.info("No position PnL chart yet.")
+        else:
+            chart_df = positions_frame.copy()
+            chart_df["unrealized_pnl"] = pd.to_numeric(chart_df["unrealized_pnl"], errors="coerce").fillna(0.0)
+            colors = ["#14b8a6" if value >= 0 else "#f43f5e" for value in chart_df["unrealized_pnl"]]
+            fig = go.Figure(
+                data=[
+                    go.Bar(
+                        x=chart_df["symbol"].astype(str),
+                        y=chart_df["unrealized_pnl"],
+                        marker_color=colors,
+                        text=chart_df["unrealized_pnl"].map(lambda value: f"${value:,.2f}"),
+                        textposition="outside",
+                    )
+                ]
+            )
+            fig.update_layout(title="Open Position Unrealized PnL")
+            st.plotly_chart(_style_monitor_figure(fig), use_container_width=True)
+    with chart_right:
+        st.markdown("**Scanner Scores**")
+        if scanner_watchlist.empty or not {"symbol", "score"}.issubset(scanner_watchlist.columns):
+            st.info("No scanner score chart yet.")
+        else:
+            chart_df = scanner_watchlist.head(10).copy()
+            chart_df["score"] = pd.to_numeric(chart_df["score"], errors="coerce").fillna(0.0)
+            fig = px.bar(
+                chart_df,
+                x="symbol",
+                y="score",
+                color="mode" if "mode" in chart_df.columns else None,
+                title="Latest Scanner Candidate Scores",
+                range_y=[0, max(10, float(chart_df["score"].max() or 0))],
+                color_discrete_sequence=["#14b8a6", "#3b82f6", "#f59e0b", "#f43f5e"],
+            )
+            st.plotly_chart(_style_monitor_figure(fig), use_container_width=True)
+
+
 def render_demo_test_short_form(api_url: str, execution_token: str, status_payload: dict) -> None:
     execution_token = execution_token.strip()
     whitelist = status_payload.get("whitelist") or []
@@ -358,16 +501,6 @@ def render_bot_monitor(api_url: str, execution_token: str) -> None:
     if status_error:
         st.warning(f"Execution status unavailable: {status_error}")
 
-    status_cols = st.columns(6)
-    status_cols[0].metric("Backend", "offline" if health_error else "online")
-    status_cols[1].metric("Mode", status_payload.get("mode") or "unknown")
-    status_cols[2].metric("Execution", "enabled" if status_payload.get("enabled") else "disabled")
-    status_cols[3].metric("API keys", "configured" if status_payload.get("configured") else "missing")
-    token_status = "entered" if execution_token else ("configured" if status_payload.get("api_token_configured") else "missing")
-    status_cols[4].metric("Token", token_status)
-    status_cols[5].metric("Max notional", money(limits.get("max_demo_notional_usdt")))
-    st.caption("Bybit Demo monitor, reads account/scanner state and does not auto-enter signals.")
-
     if health_error:
         st.warning(f"Backend health unavailable: {health_error}")
 
@@ -403,20 +536,24 @@ def render_bot_monitor(api_url: str, execution_token: str) -> None:
         if journal_error:
             st.warning(f"Execution history unavailable: {journal_error}")
 
-    account_cols = st.columns(8)
-    account_cols[0].metric("Equity", money(wallet_summary.get("equity")))
-    account_cols[1].metric("Wallet", money(wallet_summary.get("wallet_balance")))
-    account_cols[2].metric("Available", money(wallet_summary.get("available_balance")))
-    account_cols[3].metric("Margin used", money(wallet_summary.get("margin_used")))
-    account_cols[4].metric("Unrealized PnL", signed_money(wallet_summary.get("unrealized_pnl")))
-    account_cols[5].metric("Positions", compact_count(len(positions_rows)))
-    account_cols[6].metric("Open orders", compact_count(len(orders_rows)))
-    account_cols[7].metric("Scanner signals", compact_count(len(scanner_watchlist)))
-
     positions_frame = _frame_from_rows(positions_rows)
     orders_frame = _frame_from_rows(orders_rows)
     journal_rows = _journal_rows(journal_payload)
     journal_frame = _frame_from_rows(journal_rows)
+
+    _render_variant_a_visual_overview(
+        health_error=health_error,
+        status_payload=status_payload,
+        limits=limits,
+        execution_token=execution_token,
+        wallet_summary=wallet_summary,
+        positions_rows=positions_rows,
+        orders_rows=orders_rows,
+        scanner_watchlist=scanner_watchlist,
+    )
+    if not execution_token:
+        st.info("Enter the execution API token in the sidebar to load demo account data and order controls.")
+    _render_monitor_visual_charts(positions_frame, scanner_watchlist)
 
     main_left, main_right = st.columns(2)
     with main_left:

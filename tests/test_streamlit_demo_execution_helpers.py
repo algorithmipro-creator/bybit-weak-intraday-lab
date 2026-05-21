@@ -28,6 +28,14 @@ def test_bot_monitor_section_renders_before_jobs_table() -> None:
     assert source.index("render_bot_monitor(api_url, execution_token)") < source.index('st.header("Jobs")')
 
 
+def test_bot_monitor_uses_variant_a_visual_overview_before_tables() -> None:
+    source = Path("ui/streamlit_app.py").read_text(encoding="utf-8")
+
+    assert "build_executive_overview_html" in source
+    assert "build_visual_panels_html" in source
+    assert source.index("build_executive_overview_html") < source.index("st.dataframe(positions_frame")
+
+
 class FakeResponse:
     def __init__(self, payload=None):
         self.payload = payload or {}

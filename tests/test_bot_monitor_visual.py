@@ -1,0 +1,82 @@
+from __future__ import annotations
+
+from ui.bot_monitor_visual import (
+    VisualMetric,
+    VisualPill,
+    build_executive_overview_html,
+    build_visual_panels_html,
+)
+
+
+def test_executive_overview_html_renders_variant_a_structure() -> None:
+    html = build_executive_overview_html(
+        status_label="DEMO CONNECTED",
+        subtitle="Reads demo account state.",
+        pills=[
+            VisualPill("Backend", "online", "success"),
+            VisualPill("Execution", "enabled", "warning"),
+        ],
+        metrics=[
+            VisualMetric("Equity", "$1,024.80"),
+            VisualMetric("Unreal PnL", "-$0.42", "negative"),
+            VisualMetric("Margin", "$6.68"),
+            VisualMetric("Signals", "7 waiting", "accent"),
+        ],
+    )
+
+    assert "bwi-executive-overview" in html
+    assert "bwi-status-badge bwi-tone-success" in html
+    assert "DEMO CONNECTED" in html
+    assert html.index("Equity") < html.index("Unreal PnL")
+    assert html.count("bwi-kpi-card") == 4
+
+
+def test_visual_panels_html_renders_position_and_watchlist_cards() -> None:
+    html = build_visual_panels_html(
+        position_rows=[
+            {
+                "symbol": "ENAUSDT",
+                "side": "Sell",
+                "size": 95,
+                "entry_price": 0.10441,
+                "mark_price": 0.10485,
+                "unrealized_pnl": -0.42,
+                "pnl_pct": -0.004,
+                "leverage": 5,
+                "take_profit": 0.09814,
+                "stop_loss": 0.11172,
+            }
+        ],
+        watchlist_rows=[
+            {
+                "symbol": "JTOUSDT",
+                "mode": "pump",
+                "score": 10,
+                "status": "waiting",
+                "price": 2.5,
+                "turnover_usdt": 1_500_000,
+            }
+        ],
+    )
+
+    assert "bwi-panel-grid" in html
+    assert "Open Positions" in html
+    assert "Scanner Watchlist" in html
+    assert "ENAUSDT" in html
+    assert "TP 0.09814" in html
+    assert "JTOUSDT" in html
+    assert "score 10" in html
+
+
+def test_visual_html_escapes_dynamic_values() -> None:
+    html = build_executive_overview_html(
+        status_label="<script>alert(1)</script>",
+        subtitle="<b>unsafe</b>",
+        pills=[VisualPill("<img src=x>", "<script>bad()</script>", "success")],
+        metrics=[VisualMetric("<b>Equity</b>", "<script>bad()</script>")],
+    )
+
+    assert "<script" not in html
+    assert "<img" not in html
+    assert "&lt;script&gt;" in html
+    assert "&lt;b&gt;Equity&lt;/b&gt;" in html
