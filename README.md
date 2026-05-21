@@ -7,7 +7,7 @@ Research-платформа для поиска слабых intraday-токен
 - **Weak continuation / failed bounce**: токен уже был слабым, делает слабый отскок и теряет VWAP.
 - **Pump-and-fade**: токен резко пампится, затем теряет VWAP/импульс и переходит в fade.
 
-Это **research/backtest/signal lab**. Проект не размещает live orders, не хранит API keys и не является production trading bot.
+Это **research/backtest/signal lab**. Проект не размещает mainnet/live orders, не хранит API keys в репозитории и не является production trading bot. Guarded Bybit Demo execution доступен только для ручной проверки маленьких тестовых ордеров.
 
 ## Current Status
 
@@ -17,6 +17,7 @@ MVP уже включает:
 - tick-level Bybit public archive scanner;
 - FastAPI backend with scan jobs;
 - Streamlit dashboard;
+- guarded Bybit Demo execution panel;
 - Docker Compose deployment;
 - sample v5 research outputs;
 - Codex-ready project instructions;
@@ -179,6 +180,11 @@ GET  /jobs/{job_id}/signals.csv
 GET  /jobs/{job_id}/evaluations.csv
 GET  /jobs/{job_id}/grid.csv
 GET  /jobs/{job_id}/grid_trades.csv
+GET  /execution/demo/status
+GET  /execution/demo/wallet
+GET  /execution/demo/positions
+GET  /execution/demo/open-orders
+POST /execution/demo/place-test-short
 ```
 
 Safety limits in the current backend:
@@ -264,6 +270,22 @@ curl -X POST http://localhost:8000/jobs/optimize-tp-sl \
   }'
 ```
 
+## Bybit Demo Execution
+
+The project includes a guarded Bybit Demo execution slice for testing tiny USDT perpetual short orders against `https://api-demo.bybit.com`.
+
+This is not mainnet trading. Order placement is disabled by default and requires all of these controls:
+
+- `BWI_EXECUTION_MODE=demo`;
+- `BWI_EXECUTION_ENABLED=true`;
+- Bybit Demo API key and secret in environment variables;
+- `BWI_EXECUTION_API_TOKEN` passed from the UI/API as `X-BWI-Execution-Token`;
+- exact demo base URL `https://api-demo.bybit.com`;
+- a whitelisted symbol;
+- small notional, open-position and daily-order limits.
+
+The Streamlit dashboard has a "Bybit Demo Execution" section. Status is visible without the execution token; wallet, positions, open orders and the test short form require the token. Mainnet endpoints and automatic signal-to-order routing remain out of scope.
+
 ## Documentation
 
 - [SPECIFICATION.md](SPECIFICATION.md): formal strategy, system, data, API and limitations spec.
@@ -279,9 +301,9 @@ curl -X POST http://localhost:8000/jobs/optimize-tp-sl \
 
 Near-term:
 
-1. Add causal/live-scan-safe signal calculations.
-2. Add TP/SL grid optimizer endpoint and UI page.
-3. Add job limits, API auth and safer public deployment defaults.
+1. Keep causal/live-scan-safe signal calculations separate from historical labels.
+2. Expand TP/SL and MFE/MAE analysis views.
+3. Harden private VPS deployment and reverse-proxy access.
 4. Add funding/open-interest features from Bybit V5.
 5. Add market-cap/rank filters from an external provider.
 
@@ -290,12 +312,14 @@ Later:
 1. Add scheduled full-universe scans.
 2. Add Telegram/Discord signal alerts.
 3. Add paper-trading mode.
-4. Evaluate whether live execution should exist as a separate isolated module.
+4. Manually verify the guarded Bybit Demo execution slice.
+5. Evaluate whether live execution should exist as a separate isolated module.
 
 ## Safety Boundaries
 
 - No exchange credentials in the repository.
-- No live order placement in the MVP.
+- No mainnet order placement.
+- Demo order placement is disabled by default and guarded by demo-only URL validation, an execution API token, symbol whitelist, notional limits, position limits and a daily order limit.
 - Backtest output excludes fees, funding, slippage, latency and order-book depth.
 - Public deployment should protect API endpoints with authentication or network restrictions.
 - Research results must be validated on broader full-universe samples before any trading use.

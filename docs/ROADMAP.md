@@ -102,6 +102,18 @@ Scanner can segment results by liquidity, rank, funding and OI behavior.
 
 Goal: move from pure backtest to monitored research signals.
 
+Status: initial guarded Bybit Demo execution slice is implemented for manual verification only.
+
+Initial demo execution slice:
+
+1. Demo-only Bybit V5 connector.
+2. Wallet/positions/open-orders view.
+3. Guarded tiny test short order.
+4. Local execution journal.
+5. Streamlit panel protected by a separate execution API token.
+
+Auto-entry from causal signals remains a later phase after this slice is manually verified on Bybit Demo.
+
 Tasks:
 
 1. Add scheduled scans.
@@ -109,6 +121,7 @@ Tasks:
 3. Add paper-trading journal.
 4. Add signal lifecycle states.
 5. Track missed/expired/invalidated setups.
+6. Add a conservative paper/demo signal review workflow before any automatic order routing.
 
 Success criteria:
 
@@ -120,7 +133,7 @@ Signals can be observed in real time without placing live orders.
 
 Goal: decide whether live execution should exist at all.
 
-This phase requires separate review.
+This phase requires separate design and risk review.
 
 Questions:
 
@@ -133,5 +146,5 @@ Questions:
 Default answer until proven otherwise:
 
 ```text
-No live execution in this repository.
+No mainnet execution in this repository.
 ```
