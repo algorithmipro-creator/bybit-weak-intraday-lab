@@ -292,3 +292,23 @@ def test_build_scanner_watchlist_from_regular_scan_marks_candidates() -> None:
     assert watchlist.loc[0, "status"] == "candidate"
     assert watchlist.loc[0, "score"] == 9
     assert watchlist.loc[0, "time_utc"] == "2026-03-18T10:00:00+00:00"
+
+
+def test_build_scanner_watchlist_from_regular_scan_overrides_existing_status() -> None:
+    trades = pd.DataFrame(
+        [
+            {
+                "symbol": "ENAUSDT",
+                "mode": "weak",
+                "candidate_score": 9,
+                "entry_time_utc": "2026-03-18T10:00:00+00:00",
+                "entry_price": 0.1,
+                "turnover_usdt": 1_200_000,
+                "status": "waiting",
+            }
+        ]
+    )
+
+    watchlist = build_scanner_watchlist("scan", trades=trades)
+
+    assert watchlist.loc[0, "status"] == "candidate"

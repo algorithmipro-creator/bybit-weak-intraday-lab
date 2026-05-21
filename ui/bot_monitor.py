@@ -201,8 +201,7 @@ def _regular_watchlist(trades: Any) -> pd.DataFrame:
             "entry_price": "price",
         }
     )
-    if "status" not in df.columns:
-        df["status"] = "candidate"
+    df["status"] = "candidate"
     return _with_watchlist_columns(df)
 
 
