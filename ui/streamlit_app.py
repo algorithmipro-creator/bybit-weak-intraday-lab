@@ -64,6 +64,12 @@ def _result_list(payload: dict | None) -> list[dict]:
     return ((payload.get("result") or {}).get("list") or []) or []
 
 
+def _journal_rows(payload: dict | None) -> list[dict]:
+    if not payload:
+        return []
+    return payload.get("rows") or []
+
+
 def parse_float_grid(value: str) -> list[float]:
     return [float(x.strip()) for x in value.replace("\n", ",").split(",") if x.strip()]
 
@@ -423,7 +429,7 @@ def render_bot_monitor(api_url: str, execution_token: str) -> None:
 
     positions_frame = _frame_from_rows(positions_rows)
     orders_frame = _frame_from_rows(orders_rows)
-    journal_rows = _result_list(journal_payload)
+    journal_rows = _journal_rows(journal_payload)
     journal_frame = _frame_from_rows(journal_rows)
 
     main_left, main_right = st.columns(2)

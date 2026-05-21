@@ -127,3 +127,29 @@ def test_result_list_extracts_bybit_result_list(payload, expected) -> None:
     helpers = _load_streamlit_helpers("_result_list")
 
     assert helpers["_result_list"](payload) == expected
+
+
+def test_journal_rows_extracts_top_level_rows() -> None:
+    helpers = _load_streamlit_helpers("_journal_rows")
+    journal_rows = helpers.get("_journal_rows")
+
+    assert journal_rows is not None
+    assert journal_rows(
+        {
+            "rows": [
+                {
+                    "symbol": "ENAUSDT",
+                    "side": "Sell",
+                    "qty": "1",
+                }
+            ],
+            "limit": 25,
+            "count": 1,
+        }
+    ) == [
+        {
+            "symbol": "ENAUSDT",
+            "side": "Sell",
+            "qty": "1",
+        }
+    ]
