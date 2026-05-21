@@ -46,6 +46,8 @@ def test_streamlit_app_defines_clean_navigation_pages() -> None:
 def test_monitor_page_does_not_render_jobs_or_connection_inputs() -> None:
     monitor_source = _function_source("render_monitor_page")
 
+    assert "render_bot_monitor(api_url, execution_token)" in monitor_source
+    assert "api_json_or_error" not in monitor_source
     assert "Start Scan Job" not in monitor_source
     assert "Start Job" not in monitor_source
     assert "Scanner Jobs" not in monitor_source
@@ -67,6 +69,7 @@ def test_connection_screen_owns_connection_inputs() -> None:
 def test_secondary_menu_contains_clean_monitor_sections() -> None:
     menu_source = _function_source("render_app_menu")
 
+    assert "NAV_PAGES" in menu_source
     assert "Monitor" in menu_source
     assert "Reports" in menu_source
     assert "Scanner Jobs" in menu_source

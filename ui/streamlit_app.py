@@ -660,90 +660,22 @@ def render_bot_monitor(api_url: str, execution_token: str) -> None:
 
 
 def render_app_menu() -> str:
-    pages = ("Monitor", "Reports", "Scanner Jobs", "Execution History", "Settings")
     current = normalize_page(st.session_state.get(SELECTED_PAGE_KEY))
-    index = pages.index(current) if current in pages else 0
-    selected_page = st.radio("Menu", pages, index=index, horizontal=True, label_visibility="collapsed")
+    index = NAV_PAGES.index(current) if current in NAV_PAGES else 0
+    selected_page = st.radio(
+        "Monitor / Reports / Scanner Jobs / Execution History / Settings",
+        NAV_PAGES,
+        index=index,
+        horizontal=True,
+        label_visibility="collapsed",
+    )
     st.session_state[SELECTED_PAGE_KEY] = normalize_page(selected_page)
     return normalize_page(selected_page)
 
 
 def render_monitor_page(api_url: str, execution_token: str, auto_refresh: bool) -> None:
-    st.header("Bot Monitor")
-    st.caption("Demo account control room: connection, account risk, active positions, and scanner candidates.")
-
-    health_payload, health_error = api_json_or_error("/health", api_url)
-    status_payload, status_error = api_json_or_error("/execution/demo/status", api_url)
-    status_payload = status_payload or {}
-    limits = status_payload.get("limits") or {}
-    jobs = _safe_jobs(api_url)
-    scanner_watchlist = _load_scanner_watchlist(api_url, jobs)
-
-    if status_error:
-        st.warning(f"Execution status unavailable: {status_error}")
-    if health_error:
-        st.warning(f"Backend health unavailable: {health_error}")
-    if auto_refresh and any(str(job.get("status")) in ACTIVE_STATUSES for job in jobs):
-        time.sleep(3)
-        st.rerun()
-
-    wallet_payload = positions_payload = orders_payload = None
-    wallet_error = positions_error = orders_error = None
-    positions_rows: list[dict] = []
-    orders_rows: list[dict] = []
-    wallet_summary = summarize_wallet(None)
-    execution_token = execution_token.strip()
-
-    if not execution_token:
-        st.info("Reconnect with a token to load demo account data.")
-    else:
-        wallet_payload, wallet_error = api_json_or_error("/execution/demo/wallet", api_url, token=execution_token)
-        positions_payload, positions_error = api_json_or_error("/execution/demo/positions", api_url, token=execution_token)
-        orders_payload, orders_error = api_json_or_error("/execution/demo/open-orders", api_url, token=execution_token)
-
-        if wallet_error:
-            st.warning(f"Wallet unavailable: {wallet_error}")
-        else:
-            wallet_summary = summarize_wallet(wallet_payload)
-
-        if orders_error:
-            st.warning(f"Open orders unavailable: {orders_error}")
-        else:
-            orders_rows = normalize_open_orders(orders_payload)
-
-        if positions_error:
-            st.warning(f"Positions unavailable: {positions_error}")
-        else:
-            positions_rows = normalize_positions(positions_payload, orders_payload if not orders_error else None)
-
-    positions_frame = _frame_from_rows(positions_rows)
-    _render_variant_a_visual_overview(
-        health_error=health_error,
-        status_payload=status_payload,
-        limits=limits,
-        execution_token=execution_token,
-        wallet_summary=wallet_summary,
-        positions_rows=positions_rows,
-        orders_rows=orders_rows,
-        scanner_watchlist=scanner_watchlist,
-    )
-    _render_monitor_visual_charts(positions_frame, scanner_watchlist)
-
-    position_col, scanner_col = st.columns(2)
-    with position_col:
-        st.subheader("Open Positions")
-        if positions_error:
-            st.info("Positions are unavailable.")
-        elif positions_frame.empty:
-            st.info("No open positions.")
-        else:
-            st.dataframe(positions_frame, use_container_width=True, hide_index=True)
-    with scanner_col:
-        st.subheader("Scanner Watchlist")
-        if scanner_watchlist.empty:
-            st.info("No scanner candidates yet.")
-        else:
-            st.dataframe(scanner_watchlist, use_container_width=True, hide_index=True)
+    st.caption("Bot Monitor: Open Positions and Scanner Watchlist are rendered by the shared monitor implementation.")
+    render_bot_monitor(api_url, execution_token)
 
 
 def render_reports_page(api_url: str) -> None:
