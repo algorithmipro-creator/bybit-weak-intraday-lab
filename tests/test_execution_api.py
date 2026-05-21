@@ -67,12 +67,14 @@ def _patch_execution(
     base_url: str = DEMO_BASE_URL,
     max_daily_test_orders: int = 3,
     execution_api_token: str = EXECUTION_TOKEN,
+    api_key: str = "key",
+    api_secret: str = "secret",
 ):
     config = ExecutionConfig(
         execution_mode=execution_mode,
         execution_enabled=enabled,
-        api_key="key",
-        api_secret="secret",
+        api_key=api_key,
+        api_secret=api_secret,
         base_url=base_url,
         symbol_whitelist=tuple(whitelist),
         max_demo_notional_usdt=25,
@@ -138,6 +140,11 @@ def test_execution_status_reports_token_configured_without_exposing_token(monkey
 
 def test_journal_rejects_missing_token_before_reading_journal(monkeypatch, tmp_path):
     fake_client = _patch_execution(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        execution_routes,
+        "read_journal_tail",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("journal should not be read")),
+    )
 
     response = client.get("/execution/demo/journal")
 
@@ -148,6 +155,11 @@ def test_journal_rejects_missing_token_before_reading_journal(monkeypatch, tmp_p
 
 def test_journal_rejects_invalid_token_before_reading_journal(monkeypatch, tmp_path):
     fake_client = _patch_execution(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        execution_routes,
+        "read_journal_tail",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("journal should not be read")),
+    )
 
     response = client.get("/execution/demo/journal", headers=_auth_headers("wrong-token"))
 
@@ -156,8 +168,38 @@ def test_journal_rejects_invalid_token_before_reading_journal(monkeypatch, tmp_p
     assert fake_client.client_factory_called["value"] is False
 
 
+def test_journal_rejects_non_demo_mode_before_reading_journal(monkeypatch, tmp_path):
+    fake_client = _patch_execution(monkeypatch, tmp_path, execution_mode="disabled")
+    monkeypatch.setattr(
+        execution_routes,
+        "read_journal_tail",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("journal should not be read")),
+    )
+
+    response = client.get("/execution/demo/journal", headers=_auth_headers())
+
+    assert response.status_code == 400
+    assert response.json()["detail"]["reason"] == "execution_mode_not_demo"
+    assert fake_client.client_factory_called["value"] is False
+
+
+def test_journal_rejects_missing_demo_keys_before_reading_journal(monkeypatch, tmp_path):
+    fake_client = _patch_execution(monkeypatch, tmp_path, api_key="", api_secret="")
+    monkeypatch.setattr(
+        execution_routes,
+        "read_journal_tail",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("journal should not be read")),
+    )
+
+    response = client.get("/execution/demo/journal", headers=_auth_headers())
+
+    assert response.status_code == 400
+    assert response.json()["detail"]["reason"] == "missing_demo_api_keys"
+    assert fake_client.client_factory_called["value"] is False
+
+
 def test_journal_returns_recent_rows_newest_first(monkeypatch, tmp_path):
-    _patch_execution(monkeypatch, tmp_path)
+    fake_client = _patch_execution(monkeypatch, tmp_path)
     journal_path = tmp_path / "execution_journal.csv"
     append_journal_event(
         journal_path,
@@ -207,24 +249,16 @@ def test_journal_returns_recent_rows_newest_first(monkeypatch, tmp_path):
     assert body["count"] == 2
     assert [row["event_id"] for row in body["rows"]] == ["event-3", "event-2"]
     assert body["rows"][0]["reason"] == "open_position_limit_reached"
+    assert fake_client.client_factory_called["value"] is False
 
 
 def test_journal_clamps_limit_and_does_not_expose_secrets(monkeypatch, tmp_path):
     _patch_execution(monkeypatch, tmp_path, execution_api_token=EXECUTION_TOKEN)
     journal_path = tmp_path / "execution_journal.csv"
-    append_journal_event(
-        journal_path,
-        {
-            "created_at_utc": "2026-05-21T10:00:00+00:00",
-            "event_id": "event-1",
-            "order_link_id": "bwi-demo-1",
-            "mode": "demo",
-            "symbol": "ENAUSDT",
-            "side": "Sell",
-            "status": "sent",
-            "reason": "allowed",
-            "bybit_ret_msg": "OK",
-        },
+    journal_path.write_text(
+        "created_at_utc,event_id,order_link_id,mode,symbol,side,status,reason,bybit_ret_msg,api_secret\n"
+        f"2026-05-21T10:00:00+00:00,event-1,bwi-demo-1,demo,ENAUSDT,Sell,sent,allowed,OK,{EXECUTION_TOKEN}-secret-key\n",
+        encoding="utf-8",
     )
 
     too_large = client.get("/execution/demo/journal?limit=9999", headers=_auth_headers())
@@ -235,6 +269,7 @@ def test_journal_clamps_limit_and_does_not_expose_secrets(monkeypatch, tmp_path)
     assert too_large.json()["count"] == 1
     assert too_small.status_code == 200
     assert too_small.json()["limit"] == 1
+    assert "api_secret" not in too_large.json()["rows"][0]
     assert EXECUTION_TOKEN not in str(too_large.json())
     assert "secret" not in str(too_large.json())
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date
+from io import StringIO
 from pathlib import Path
 from typing import Any
 
@@ -26,6 +27,11 @@ JOURNAL_COLUMNS = [
 ]
 
 COUNTED_ORDER_STATUSES = {"accepted", "sent"}
+TAIL_READ_CHUNK_BYTES = 8192
+
+
+def _empty_journal_frame() -> pd.DataFrame:
+    return pd.DataFrame(columns=JOURNAL_COLUMNS)
 
 
 def _row_from_event(event: dict[str, Any]) -> dict[str, Any]:
@@ -59,14 +65,63 @@ def append_journal_event(path: str | Path, event: dict[str, Any]) -> None:
 def read_journal(path: str | Path) -> pd.DataFrame:
     journal_path = Path(path)
     if not journal_path.exists():
-        return pd.DataFrame(columns=JOURNAL_COLUMNS)
+        return _empty_journal_frame()
     if journal_path.stat().st_size == 0:
-        return pd.DataFrame(columns=JOURNAL_COLUMNS)
+        return _empty_journal_frame()
     try:
         frame = pd.read_csv(journal_path)
     except pd.errors.EmptyDataError:
-        return pd.DataFrame(columns=JOURNAL_COLUMNS)
+        return _empty_journal_frame()
     return frame.reindex(columns=JOURNAL_COLUMNS)
+
+
+def _tail_data_lines(path: Path, limit: int) -> list[str]:
+    with path.open("r", encoding="utf-8-sig", newline="") as handle:
+        header = handle.readline().rstrip("\r\n")
+    if not header:
+        return []
+
+    with path.open("rb") as handle:
+        handle.seek(0, 2)
+        position = handle.tell()
+        buffer = b""
+        while position > 0 and buffer.count(b"\n") <= limit:
+            read_size = min(TAIL_READ_CHUNK_BYTES, position)
+            position -= read_size
+            handle.seek(position)
+            buffer = handle.read(read_size) + buffer
+
+    lines = buffer.splitlines()
+    if position > 0 and lines:
+        lines = lines[1:]
+    elif lines:
+        lines = lines[1:]
+    return [line.decode("utf-8") for line in lines[-limit:]]
+
+
+def read_journal_tail(path: str | Path, limit: int) -> pd.DataFrame:
+    journal_path = Path(path)
+    clamped_limit = max(1, int(limit))
+    if not journal_path.exists():
+        return _empty_journal_frame()
+    if journal_path.stat().st_size == 0:
+        return _empty_journal_frame()
+
+    with journal_path.open("r", encoding="utf-8-sig", newline="") as handle:
+        header = handle.readline().rstrip("\r\n")
+    if not header:
+        return _empty_journal_frame()
+
+    data_lines = _tail_data_lines(journal_path, clamped_limit)
+    if not data_lines:
+        return _empty_journal_frame()
+
+    csv_text = header + "\n" + "\n".join(data_lines)
+    try:
+        frame = pd.read_csv(StringIO(csv_text))
+    except pd.errors.EmptyDataError:
+        return _empty_journal_frame()
+    return frame.reindex(columns=JOURNAL_COLUMNS).iloc[::-1].reset_index(drop=True)
 
 
 def count_daily_test_orders(path: str | Path, day: date) -> int:

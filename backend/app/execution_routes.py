@@ -12,7 +12,12 @@ from fastapi import APIRouter, Header, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from bybit_weak_intraday.execution.bybit_demo import BybitDemoAPIError, BybitDemoClient
-from bybit_weak_intraday.execution.journal import append_journal_event, count_daily_test_orders, read_journal
+from bybit_weak_intraday.execution.journal import (
+    append_journal_event,
+    count_daily_test_orders,
+    read_journal,
+    read_journal_tail,
+)
 from bybit_weak_intraday.execution.orders import (
     calculate_short_tpsl,
     parse_linear_instrument_rules,
@@ -209,11 +214,8 @@ def demo_journal(
     config = execution_config_from_settings()
     _require_demo_read_config(config)
     clamped_limit = max(1, min(int(limit), 500))
-    journal = read_journal(journal_path_from_settings())
-    if journal.empty:
-        rows: list[dict] = []
-    else:
-        rows = journal.tail(clamped_limit).iloc[::-1].fillna("").to_dict(orient="records")
+    journal = read_journal_tail(journal_path_from_settings(), clamped_limit)
+    rows = [] if journal.empty else journal.fillna("").to_dict(orient="records")
     return {"rows": rows, "limit": clamped_limit, "count": len(rows)}
 
 

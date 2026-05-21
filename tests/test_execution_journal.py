@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import date
 
+from bybit_weak_intraday.execution import journal as journal_module
 from bybit_weak_intraday.execution.journal import (
     JOURNAL_COLUMNS,
     append_journal_event,
@@ -225,6 +226,42 @@ def test_read_journal_adds_missing_columns_from_existing_csv(tmp_path) -> None:
 
 def test_read_journal_missing_file_returns_empty_frame(tmp_path) -> None:
     frame = read_journal(tmp_path / "missing.csv")
+
+    assert frame.empty
+    assert list(frame.columns) == JOURNAL_COLUMNS
+
+
+def test_read_journal_tail_returns_newest_rows_first_and_drops_extra_columns(tmp_path) -> None:
+    path = tmp_path / "execution_journal.csv"
+    path.write_text(
+        "created_at_utc,event_id,status,mode,api_secret\n"
+        "2026-05-21T10:00:00+00:00,event-1,accepted,demo,old-secret\n"
+        "2026-05-21T10:01:00+00:00,event-2,sent,demo,must-not-leak\n"
+        "2026-05-21T10:02:00+00:00,event-3,rejected,demo,new-secret\n",
+        encoding="utf-8",
+    )
+
+    frame = journal_module.read_journal_tail(path, 2)
+
+    assert list(frame.columns) == JOURNAL_COLUMNS
+    assert list(frame["event_id"]) == ["event-3", "event-2"]
+    assert "api_secret" not in frame.columns
+    assert "must-not-leak" not in str(frame.to_dict(orient="records"))
+
+
+def test_read_journal_tail_handles_limit_one(tmp_path) -> None:
+    path = tmp_path / "execution_journal.csv"
+    append_journal_event(path, {"created_at_utc": "2026-05-21T10:00:00+00:00", "event_id": "event-1"})
+    append_journal_event(path, {"created_at_utc": "2026-05-21T10:01:00+00:00", "event_id": "event-2"})
+
+    frame = journal_module.read_journal_tail(path, 1)
+
+    assert len(frame) == 1
+    assert frame.loc[0, "event_id"] == "event-2"
+
+
+def test_read_journal_tail_missing_file_returns_empty_frame(tmp_path) -> None:
+    frame = journal_module.read_journal_tail(tmp_path / "missing.csv", 50)
 
     assert frame.empty
     assert list(frame.columns) == JOURNAL_COLUMNS
