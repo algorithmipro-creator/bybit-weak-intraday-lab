@@ -3,6 +3,7 @@ from __future__ import annotations
 from bybit_weak_intraday.execution.safety import (
     DEMO_BASE_URL,
     ExecutionConfig,
+    SafetyDecision,
     parse_symbol_whitelist,
     validate_position_limit,
     validate_static_demo_order_request,
@@ -27,6 +28,14 @@ def _config(**overrides) -> ExecutionConfig:
 
 def test_parse_symbol_whitelist_normalizes_symbols() -> None:
     assert parse_symbol_whitelist(" enausdt, JTOUSDT ,,") == ("ENAUSDT", "JTOUSDT")
+
+
+def test_execution_package_import_star_exposes_safety_module() -> None:
+    namespace: dict[str, object] = {}
+
+    exec("from bybit_weak_intraday.execution import *", namespace)
+
+    assert namespace["safety"].SafetyDecision is SafetyDecision
 
 
 def test_static_gate_blocks_disabled_mode() -> None:
