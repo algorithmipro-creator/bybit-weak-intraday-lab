@@ -3,6 +3,8 @@ __pycache__/
 .env
 bybit_demo_keys.local.env
 demo_keys.local.env
+*.local.env.txt
+Новый текстовый документ.txt
 local_secrets/
 .venv/
 data/bybit_archive_cache/
