@@ -1,6 +1,9 @@
 __pycache__/
 *.pyc
 .env
+bybit_demo_keys.local.env
+demo_keys.local.env
+local_secrets/
 .venv/
 data/bybit_archive_cache/
 data/jobs/*
