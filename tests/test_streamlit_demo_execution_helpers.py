@@ -22,10 +22,56 @@ def _load_streamlit_helpers(*names: str) -> dict:
     return namespace
 
 
-def test_bot_monitor_section_renders_before_jobs_table() -> None:
+def _function_source(function_name: str) -> str:
+    source = Path("ui/streamlit_app.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    for node in tree.body:
+        if isinstance(node, ast.FunctionDef) and node.name == function_name:
+            return ast.get_source_segment(source, node) or ""
+    raise AssertionError(f"Function {function_name} not found")
+
+
+def test_streamlit_app_defines_clean_navigation_pages() -> None:
     source = Path("ui/streamlit_app.py").read_text(encoding="utf-8")
 
-    assert source.index("render_bot_monitor(api_url, execution_token)") < source.index('st.header("Jobs")')
+    assert "render_connection_screen" in source
+    assert "render_app_menu" in source
+    assert "render_monitor_page" in source
+    assert "render_reports_page" in source
+    assert "render_scanner_jobs_page" in source
+    assert "render_execution_history_page" in source
+    assert "render_settings_page" in source
+
+
+def test_monitor_page_does_not_render_jobs_or_connection_inputs() -> None:
+    monitor_source = _function_source("render_monitor_page")
+
+    assert "Start Scan Job" not in monitor_source
+    assert "Start Job" not in monitor_source
+    assert "Scanner Jobs" not in monitor_source
+    assert "Backend API URL" not in monitor_source
+    assert "Execution token" not in monitor_source
+    assert "Bot Monitor" in monitor_source
+    assert "Open Positions" in monitor_source
+    assert "Scanner Watchlist" in monitor_source
+
+
+def test_connection_screen_owns_connection_inputs() -> None:
+    connection_source = _function_source("render_connection_screen")
+
+    assert "Backend API URL" in connection_source
+    assert "Execution token" in connection_source
+    assert "Connect" in connection_source
+
+
+def test_secondary_menu_contains_clean_monitor_sections() -> None:
+    menu_source = _function_source("render_app_menu")
+
+    assert "Monitor" in menu_source
+    assert "Reports" in menu_source
+    assert "Scanner Jobs" in menu_source
+    assert "Execution History" in menu_source
+    assert "Settings" in menu_source
 
 
 def test_bot_monitor_uses_variant_a_visual_overview_before_tables() -> None:
