@@ -700,9 +700,172 @@ def render_selected_job_results(api_url: str, selected_job: str, *, auto_refresh
     c5.metric("Updated", (meta.get("updated_at") or "")[:19])
     render_job_status(meta)
 
-    if meta.get("status") in ACTIVE_STATUSES and auto_refresh:
+    status = meta.get("status")
+    if status in ACTIVE_STATUSES and auto_refresh:
         time.sleep(3)
         st.rerun()
+    elif status == "done" and meta.get("job_type") == "causal_scan":
+        signals_csv = ""
+        evaluations_csv = ""
+        try:
+            signals_csv = api_get(f"/jobs/{selected_job}/signals.csv", api_url).text
+            evaluations_csv = api_get(f"/jobs/{selected_job}/evaluations.csv", api_url).text
+            signals = csv_to_frame(signals_csv)
+            evaluations = csv_to_frame(evaluations_csv)
+        except Exception as exc:
+            st.error(f"Failed to load causal results: {exc}")
+            signals = pd.DataFrame()
+            evaluations = pd.DataFrame()
+
+        render_causal_overview(signals)
+        render_causal_evaluation_overview(evaluations)
+        tab1, tab2, tab3 = st.tabs(["Signals", "Evaluations", "Charts"])
+        with tab1:
+            st.download_button("Download signals CSV", signals_csv, file_name=f"{selected_job}_signals.csv")
+            st.dataframe(signals, use_container_width=True, hide_index=True)
+        with tab2:
+            st.download_button("Download evaluations CSV", evaluations_csv, file_name=f"{selected_job}_evaluations.csv")
+            st.dataframe(append_trade_total_row(evaluations), use_container_width=True, hide_index=True)
+        with tab3:
+            if not signals.empty or not evaluations.empty:
+                if {"signal_time_utc", "score", "mode"}.issubset(signals.columns):
+                    st.plotly_chart(
+                        px.scatter(
+                            signals,
+                            x="signal_time_utc",
+                            y="score",
+                            color="mode",
+                            hover_data=["symbol", "signal_price", "turnover_so_far_usdt", "turnover_ratio_so_far"],
+                            title="Causal signals by time and score",
+                        ),
+                        use_container_width=True,
+                    )
+                if "mode" in signals.columns:
+                    st.plotly_chart(px.histogram(signals, x="mode", title="Causal signal modes"), use_container_width=True)
+                if not evaluations.empty and {"mfe_after_entry_pct", "mae_after_entry_pct", "mode"}.issubset(evaluations.columns):
+                    st.plotly_chart(
+                        px.scatter(
+                            evaluations,
+                            x="mae_after_entry_pct",
+                            y="mfe_after_entry_pct",
+                            color="mode",
+                            hover_data=["symbol", "date", "outcome", "pnl_underlying_pct"],
+                            title="Causal MFE vs MAE after signal",
+                        ),
+                        use_container_width=True,
+                    )
+                if not evaluations.empty and "outcome" in evaluations.columns:
+                    st.plotly_chart(px.histogram(evaluations, x="outcome", title="Causal evaluation outcomes"), use_container_width=True)
+                if not evaluations.empty and {"score", "pnl_underlying_pct", "mode"}.issubset(evaluations.columns):
+                    st.plotly_chart(
+                        px.scatter(
+                            evaluations,
+                            x="score",
+                            y="pnl_underlying_pct",
+                            color="mode",
+                            hover_data=["symbol", "date", "outcome"],
+                            title="Causal score vs post-signal PnL",
+                        ),
+                        use_container_width=True,
+                    )
+            else:
+                st.info("No causal result rows in this job.")
+    elif status == "done" and meta.get("job_type") == "tp_sl_grid":
+        grid_csv = ""
+        grid_trades_csv = ""
+        try:
+            grid_csv = api_get(f"/jobs/{selected_job}/grid.csv", api_url).text
+            grid_trades_csv = api_get(f"/jobs/{selected_job}/grid_trades.csv", api_url).text
+            grid = csv_to_frame(grid_csv)
+            grid_trades = csv_to_frame(grid_trades_csv)
+        except Exception as exc:
+            st.error(f"Failed to load optimizer results: {exc}")
+            grid = pd.DataFrame()
+            grid_trades = pd.DataFrame()
+
+        render_grid_overview(grid)
+        tab1, tab2, tab3 = st.tabs(["Grid Summary", "Grid Trades", "Charts"])
+        with tab1:
+            st.download_button("Download grid CSV", grid_csv, file_name=f"{selected_job}_grid.csv")
+            st.dataframe(grid, use_container_width=True, hide_index=True)
+        with tab2:
+            st.download_button("Download grid trades CSV", grid_trades_csv, file_name=f"{selected_job}_grid_trades.csv")
+            st.dataframe(append_trade_total_row(grid_trades), use_container_width=True, hide_index=True)
+        with tab3:
+            if not grid.empty and {"tp_pct", "sl_pct", "avg_underlying_pnl"}.issubset(grid.columns):
+                st.plotly_chart(
+                    px.scatter(
+                        grid,
+                        x="tp_pct",
+                        y="sl_pct",
+                        size="trades",
+                        color="avg_underlying_pnl",
+                        hover_data=["tp_rate", "sl_rate", "avg_minutes_to_exit"],
+                        title="TP/SL grid average PnL",
+                    ),
+                    use_container_width=True,
+                )
+            if not grid_trades.empty and {"outcome", "tp_pct", "sl_pct"}.issubset(grid_trades.columns):
+                st.plotly_chart(
+                    px.histogram(grid_trades, x="outcome", color="tp_pct", title="Grid outcomes"),
+                    use_container_width=True,
+                )
+            if grid.empty and grid_trades.empty:
+                st.info("No optimizer result files contain rows.")
+    elif status == "done":
+        trades_csv = ""
+        metrics_csv = ""
+        try:
+            trades_csv = api_get(f"/jobs/{selected_job}/trades.csv", api_url).text
+            metrics_csv = api_get(f"/jobs/{selected_job}/metrics.csv", api_url).text
+            trades = csv_to_frame(trades_csv)
+            metrics = csv_to_frame(metrics_csv)
+        except Exception as exc:
+            st.error(f"Failed to load scan results: {exc}")
+            trades = pd.DataFrame()
+            metrics = pd.DataFrame()
+
+        render_scan_overview(trades)
+        render_account_backtest(trades)
+        tab1, tab2, tab3 = st.tabs(["Trades", "Metrics", "Charts"])
+        with tab1:
+            st.download_button("Download trades CSV", trades_csv, file_name=f"{selected_job}_trades.csv")
+            st.dataframe(append_trade_total_row(trades), use_container_width=True, hide_index=True)
+        with tab2:
+            st.download_button("Download metrics CSV", metrics_csv, file_name=f"{selected_job}_metrics.csv")
+            st.dataframe(metrics, use_container_width=True, hide_index=True)
+        with tab3:
+            if not trades.empty:
+                left, right = st.columns(2)
+                with left:
+                    st.plotly_chart(px.histogram(trades, x="outcome", title="Outcomes"), use_container_width=True)
+                with right:
+                    if {"mfe_after_entry_pct", "mae_after_entry_pct", "mode"}.issubset(trades.columns):
+                        st.plotly_chart(
+                            px.scatter(
+                                trades,
+                                x="mae_after_entry_pct",
+                                y="mfe_after_entry_pct",
+                                color="mode",
+                                hover_data=["symbol", "date", "outcome"],
+                                title="MFE vs MAE after entry",
+                            ),
+                            use_container_width=True,
+                        )
+                if {"candidate_score", "turnover_usdt", "symbol"}.issubset(trades.columns):
+                    st.plotly_chart(
+                        px.scatter(
+                            trades,
+                            x="candidate_score",
+                            y="turnover_usdt",
+                            size="mfe_after_entry_pct" if "mfe_after_entry_pct" in trades.columns else None,
+                            hover_data=["symbol", "date", "mode", "outcome"],
+                            title="Score vs turnover",
+                        ),
+                        use_container_width=True,
+                    )
+            else:
+                st.info("No candidate trades in this job.")
 
 
 def render_jobs_table(api_url: str, *, auto_refresh: bool, show_results: bool) -> str | None:
@@ -758,6 +921,7 @@ def render_jobs_table(api_url: str, *, auto_refresh: bool, show_results: bool) -
 
 def render_scanner_jobs_page(api_url: str, auto_refresh: bool) -> None:
     st.header("Scanner Jobs")
+    active_jobs_auto_refresh = st.checkbox("Auto-refresh active jobs", value=auto_refresh)
     with st.expander("Scan settings", expanded=True):
         job_mode = st.radio("Job type", ["Archive scan", "Causal signal scan", "TP/SL optimizer"], horizontal=True)
         c1, c2 = st.columns(2)
@@ -847,7 +1011,7 @@ def render_scanner_jobs_page(api_url: str, auto_refresh: bool) -> None:
         except Exception as exc:
             st.error(f"Failed to start job: {exc}")
 
-    render_jobs_table(api_url, auto_refresh=auto_refresh, show_results=True)
+    render_jobs_table(api_url, auto_refresh=active_jobs_auto_refresh, show_results=True)
 
 
 def render_execution_history_page(api_url: str, execution_token: str) -> None:

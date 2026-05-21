@@ -70,6 +70,23 @@ def test_scanner_jobs_page_owns_scan_controls_and_jobs_table() -> None:
     assert 'st.header("Jobs")' not in monitor_source
 
 
+def test_selected_job_results_render_completed_job_outputs() -> None:
+    results_source = _function_source("render_selected_job_results")
+
+    assert "/trades.csv" in results_source
+    assert "/grid.csv" in results_source
+    assert "/signals.csv" in results_source
+    assert "render_account_backtest" in results_source
+
+
+def test_scanner_jobs_page_owns_auto_refresh_toggle() -> None:
+    scanner_source = _function_source("render_scanner_jobs_page")
+
+    assert "Auto-refresh active jobs" in scanner_source
+    assert "st.checkbox" in scanner_source
+    assert "auto_refresh=active_jobs_auto_refresh" in scanner_source
+
+
 def test_connection_screen_owns_connection_inputs() -> None:
     connection_source = _function_source("render_connection_screen")
 
