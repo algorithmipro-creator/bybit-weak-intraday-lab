@@ -58,6 +58,17 @@ def test_monitor_page_does_not_render_jobs_or_connection_inputs() -> None:
     assert "Scanner Watchlist" in monitor_source
 
 
+def test_scanner_jobs_page_owns_scan_controls_and_jobs_table() -> None:
+    scanner_source = _function_source("render_scanner_jobs_page")
+    monitor_source = _function_source("render_monitor_page")
+
+    assert "Start job" in scanner_source
+    assert 'st.header("Jobs")' in scanner_source or "render_jobs_table" in scanner_source
+    assert "Job type" in scanner_source
+    assert "Start job" not in monitor_source
+    assert 'st.header("Jobs")' not in monitor_source
+
+
 def test_connection_screen_owns_connection_inputs() -> None:
     connection_source = _function_source("render_connection_screen")
 
