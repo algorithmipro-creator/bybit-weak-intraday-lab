@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     max_open_positions: int = 1
     max_daily_test_orders: int = 3
     execution_journal_path: Path = Path("/app/data/execution_journal.csv")
+    execution_api_token: str = ""
 
 
 settings = Settings()

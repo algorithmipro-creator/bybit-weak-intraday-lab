@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+import secrets
+import threading
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from uuid import uuid4
 
 import requests
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel, Field
 
 from bybit_weak_intraday.execution.bybit_demo import BybitDemoAPIError, BybitDemoClient
@@ -27,6 +29,7 @@ from bybit_weak_intraday.execution.safety import (
 from .settings import settings
 
 router = APIRouter(prefix="/execution/demo", tags=["execution-demo"])
+_ORDER_LOCK = threading.Lock()
 
 
 class TestShortRequest(BaseModel):
@@ -72,6 +75,14 @@ def _reject(reason: str, *, event: dict, status_code: int = 400) -> None:
     raise HTTPException(status_code=status_code, detail={"status": "rejected", "reason": reason})
 
 
+def _require_execution_api_token(header_token: str | None) -> None:
+    configured_token = settings.execution_api_token.strip()
+    if not configured_token:
+        raise HTTPException(status_code=403, detail={"reason": "execution_api_token_not_configured"})
+    if header_token is None or not secrets.compare_digest(header_token, configured_token):
+        raise HTTPException(status_code=403, detail={"reason": "invalid_execution_api_token"})
+
+
 def _require_demo_read_config(config: ExecutionConfig) -> None:
     if config.execution_mode != "demo":
         raise HTTPException(status_code=400, detail={"reason": "execution_mode_not_demo"})
@@ -94,6 +105,10 @@ def _bybit_error_detail(exc: BybitDemoAPIError) -> dict:
 
 def _read_only_bybit_error(exc: BybitDemoAPIError) -> HTTPException:
     return HTTPException(status_code=502, detail=_bybit_error_detail(exc))
+
+
+def _transport_error_detail() -> dict:
+    return {"status": "error", "reason": "bybit_transport_error"}
 
 
 def _result_list(response: dict) -> list[dict]:
@@ -136,41 +151,61 @@ def execution_status() -> dict:
             "max_daily_test_orders": config.max_daily_test_orders,
         },
         "journal_rows": int(len(journal)),
+        "api_token_configured": bool(settings.execution_api_token.strip()),
     }
 
 
 @router.get("/wallet")
-def demo_wallet() -> dict:
+def demo_wallet(x_bwi_execution_token: str | None = Header(default=None, alias="X-BWI-Execution-Token")) -> dict:
+    _require_execution_api_token(x_bwi_execution_token)
     config = execution_config_from_settings()
     _require_demo_read_config(config)
     try:
         return demo_client_from_config(config).wallet_balance()
     except BybitDemoAPIError as exc:
         raise _read_only_bybit_error(exc) from exc
+    except requests.RequestException as exc:
+        raise HTTPException(status_code=502, detail=_transport_error_detail()) from exc
 
 
 @router.get("/positions")
-def demo_positions(symbol: str | None = None) -> dict:
+def demo_positions(
+    symbol: str | None = None,
+    x_bwi_execution_token: str | None = Header(default=None, alias="X-BWI-Execution-Token"),
+) -> dict:
+    _require_execution_api_token(x_bwi_execution_token)
     config = execution_config_from_settings()
     _require_demo_read_config(config)
     try:
         return demo_client_from_config(config).positions(symbol=symbol)
     except BybitDemoAPIError as exc:
         raise _read_only_bybit_error(exc) from exc
+    except requests.RequestException as exc:
+        raise HTTPException(status_code=502, detail=_transport_error_detail()) from exc
 
 
 @router.get("/open-orders")
-def demo_open_orders(symbol: str | None = None) -> dict:
+def demo_open_orders(
+    symbol: str | None = None,
+    x_bwi_execution_token: str | None = Header(default=None, alias="X-BWI-Execution-Token"),
+) -> dict:
+    _require_execution_api_token(x_bwi_execution_token)
     config = execution_config_from_settings()
     _require_demo_read_config(config)
     try:
         return demo_client_from_config(config).open_orders(symbol=symbol)
     except BybitDemoAPIError as exc:
         raise _read_only_bybit_error(exc) from exc
+    except requests.RequestException as exc:
+        raise HTTPException(status_code=502, detail=_transport_error_detail()) from exc
 
 
 @router.post("/place-test-short")
-def place_test_short(req: TestShortRequest) -> dict:
+def place_test_short(
+    req: TestShortRequest,
+    x_bwi_execution_token: str | None = Header(default=None, alias="X-BWI-Execution-Token"),
+) -> dict:
+    _require_execution_api_token(x_bwi_execution_token)
     config = execution_config_from_settings()
     symbol = req.symbol.strip().upper()
     event_id = uuid4().hex
@@ -186,72 +221,84 @@ def place_test_short(req: TestShortRequest) -> dict:
         "category": "linear",
         "requested_notional_usdt": req.notional_usdt,
     }
-    daily_count = count_daily_test_orders(journal_path, datetime.now(timezone.utc).date())
     decision = validate_static_demo_order_request(
         config,
         symbol=symbol,
         notional_usdt=float(req.notional_usdt),
         take_profit_pct=float(req.take_profit_pct),
         stop_loss_pct=float(req.stop_loss_pct),
-        daily_test_order_count=daily_count,
+        daily_test_order_count=0,
     )
     if not decision.allowed:
         _reject(decision.reason, event=event)
 
-    client = demo_client_from_config(config)
-    try:
-        positions = client.positions()
-        position_decision = validate_position_limit(config, open_positions_count=_open_positions_count(positions))
-        if not position_decision.allowed:
-            _reject(position_decision.reason, event=event)
-
-        instrument_response = client.instruments_info(symbol)
-        ticker_response = client.ticker(symbol)
-        rules = parse_linear_instrument_rules(instrument_response)
-        reference_price = _last_price(ticker_response)
-        qty = quantity_from_notional(Decimal(str(req.notional_usdt)), reference_price, rules)
-        take_profit, stop_loss = calculate_short_tpsl(
-            reference_price,
-            Decimal(str(req.take_profit_pct)),
-            Decimal(str(req.stop_loss_pct)),
-            rules,
-        )
-        response = client.place_short_market_order(
+    with _ORDER_LOCK:
+        daily_count = count_daily_test_orders(journal_path, datetime.now(timezone.utc).date())
+        decision = validate_static_demo_order_request(
+            config,
             symbol=symbol,
+            notional_usdt=float(req.notional_usdt),
+            take_profit_pct=float(req.take_profit_pct),
+            stop_loss_pct=float(req.stop_loss_pct),
+            daily_test_order_count=daily_count,
+        )
+        if not decision.allowed:
+            _reject(decision.reason, event=event)
+
+        client = demo_client_from_config(config)
+        try:
+            positions = client.positions()
+            position_decision = validate_position_limit(config, open_positions_count=_open_positions_count(positions))
+            if not position_decision.allowed:
+                _reject(position_decision.reason, event=event)
+
+            instrument_response = client.instruments_info(symbol)
+            ticker_response = client.ticker(symbol)
+            rules = parse_linear_instrument_rules(instrument_response)
+            reference_price = _last_price(ticker_response)
+            qty = quantity_from_notional(Decimal(str(req.notional_usdt)), reference_price, rules)
+            take_profit, stop_loss = calculate_short_tpsl(
+                reference_price,
+                Decimal(str(req.take_profit_pct)),
+                Decimal(str(req.stop_loss_pct)),
+                rules,
+            )
+            response = client.place_short_market_order(
+                symbol=symbol,
+                qty=_decimal_to_str(qty),
+                take_profit=_decimal_to_str(take_profit),
+                stop_loss=_decimal_to_str(stop_loss),
+                order_link_id=order_link_id,
+            )
+        except BybitDemoAPIError as exc:
+            _append_event(
+                event,
+                status="error",
+                reason="bybit_api_error",
+                bybit_ret_code=exc.ret_code,
+                bybit_ret_msg=exc.ret_msg,
+            )
+            raise HTTPException(
+                status_code=502,
+                detail=_bybit_error_detail(exc),
+            ) from exc
+        except (ValueError, KeyError, TypeError, InvalidOperation) as exc:
+            _append_event(event, status="error", reason="order_preparation_error", bybit_ret_msg=str(exc))
+            raise HTTPException(status_code=400, detail={"status": "error", "reason": "order_preparation_error"}) from exc
+        except requests.RequestException as exc:
+            _append_event(event, status="error", reason="bybit_transport_error", bybit_ret_msg="request_failed")
+            raise HTTPException(status_code=502, detail=_transport_error_detail()) from exc
+
+        _append_event(
+            event,
             qty=_decimal_to_str(qty),
             take_profit=_decimal_to_str(take_profit),
             stop_loss=_decimal_to_str(stop_loss),
-            order_link_id=order_link_id,
+            status="sent",
+            reason="allowed",
+            bybit_ret_code=response.get("retCode", ""),
+            bybit_ret_msg=response.get("retMsg", ""),
         )
-    except BybitDemoAPIError as exc:
-        _append_event(
-            event,
-            status="error",
-            reason="bybit_api_error",
-            bybit_ret_code=exc.ret_code,
-            bybit_ret_msg=exc.ret_msg,
-        )
-        raise HTTPException(
-            status_code=502,
-            detail=_bybit_error_detail(exc),
-        ) from exc
-    except (ValueError, KeyError, TypeError, InvalidOperation) as exc:
-        _append_event(event, status="error", reason="order_preparation_error", bybit_ret_msg=str(exc))
-        raise HTTPException(status_code=400, detail={"status": "error", "reason": "order_preparation_error"}) from exc
-    except requests.RequestException as exc:
-        _append_event(event, status="error", reason="bybit_transport_error", bybit_ret_msg=str(exc))
-        raise HTTPException(status_code=502, detail={"status": "error", "reason": "bybit_transport_error"}) from exc
-
-    _append_event(
-        event,
-        qty=_decimal_to_str(qty),
-        take_profit=_decimal_to_str(take_profit),
-        stop_loss=_decimal_to_str(stop_loss),
-        status="sent",
-        reason="allowed",
-        bybit_ret_code=response.get("retCode", ""),
-        bybit_ret_msg=response.get("retMsg", ""),
-    )
     return {
         "status": "sent",
         "symbol": symbol,

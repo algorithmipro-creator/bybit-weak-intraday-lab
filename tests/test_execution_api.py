@@ -3,6 +3,7 @@ from __future__ import annotations
 from decimal import Decimal
 from pathlib import Path
 
+import requests
 from fastapi.testclient import TestClient
 
 from backend.app import execution_routes
@@ -12,6 +13,11 @@ from bybit_weak_intraday.execution.journal import read_journal
 from bybit_weak_intraday.execution.safety import DEMO_BASE_URL, ExecutionConfig
 
 client = TestClient(main.app)
+EXECUTION_TOKEN = "test-execution-token"
+
+
+def _auth_headers(token: str = EXECUTION_TOKEN) -> dict[str, str]:
+    return {"X-BWI-Execution-Token": token}
 
 
 class FakeClient:
@@ -58,6 +64,8 @@ def _patch_execution(
     fake_client=None,
     execution_mode: str = "demo",
     base_url: str = DEMO_BASE_URL,
+    max_daily_test_orders: int = 3,
+    execution_api_token: str = EXECUTION_TOKEN,
 ):
     config = ExecutionConfig(
         execution_mode=execution_mode,
@@ -68,19 +76,21 @@ def _patch_execution(
         symbol_whitelist=tuple(whitelist),
         max_demo_notional_usdt=25,
         max_open_positions=1,
-        max_daily_test_orders=3,
+        max_daily_test_orders=max_daily_test_orders,
     )
     fake_client = fake_client or FakeClient()
-    client_factory_called = {"value": False}
+    client_factory_called = {"value": False, "count": 0}
 
     def client_factory(cfg):
         client_factory_called["value"] = True
+        client_factory_called["count"] += 1
         return fake_client
 
     fake_client.client_factory_called = client_factory_called
     monkeypatch.setattr(execution_routes, "execution_config_from_settings", lambda: config)
     monkeypatch.setattr(execution_routes, "journal_path_from_settings", lambda: tmp_path / "execution_journal.csv")
     monkeypatch.setattr(execution_routes, "demo_client_from_config", client_factory)
+    monkeypatch.setattr(execution_routes.settings, "execution_api_token", execution_api_token, raising=False)
     return fake_client
 
 
@@ -109,6 +119,90 @@ def test_execution_status_works_without_keys(monkeypatch, tmp_path):
     assert "api_secret" not in body
     assert "execution_mode" not in body
     assert "execution_enabled" not in body
+    assert body["api_token_configured"] is False
+
+
+def test_execution_status_reports_token_configured_without_exposing_token(monkeypatch, tmp_path):
+    _patch_execution(monkeypatch, tmp_path, execution_api_token=EXECUTION_TOKEN)
+
+    response = client.get("/execution/demo/status")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["api_token_configured"] is True
+    assert "execution_api_token" not in body
+    assert EXECUTION_TOKEN not in str(body)
+
+
+def test_wallet_rejects_when_token_not_configured_before_client_construction(monkeypatch, tmp_path):
+    fake_client = _patch_execution(monkeypatch, tmp_path, execution_api_token="")
+
+    response = client.get("/execution/demo/wallet", headers=_auth_headers())
+
+    assert response.status_code == 403
+    assert response.json()["detail"]["reason"] == "execution_api_token_not_configured"
+    assert fake_client.client_factory_called["value"] is False
+
+
+def test_place_test_short_rejects_when_token_not_configured_before_client_construction(monkeypatch, tmp_path):
+    fake_client = _patch_execution(monkeypatch, tmp_path, execution_api_token="")
+
+    response = client.post(
+        "/execution/demo/place-test-short",
+        headers=_auth_headers(),
+        json={"symbol": "ENAUSDT", "notional_usdt": 10, "take_profit_pct": 0.06, "stop_loss_pct": 0.07},
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"]["reason"] == "execution_api_token_not_configured"
+    assert fake_client.client_factory_called["value"] is False
+
+
+def test_wallet_rejects_invalid_token_before_client_construction(monkeypatch, tmp_path):
+    fake_client = _patch_execution(monkeypatch, tmp_path)
+
+    response = client.get("/execution/demo/wallet", headers=_auth_headers("wrong-token"))
+
+    assert response.status_code == 403
+    assert response.json()["detail"]["reason"] == "invalid_execution_api_token"
+    assert fake_client.client_factory_called["value"] is False
+
+
+def test_wallet_rejects_missing_token_before_client_construction(monkeypatch, tmp_path):
+    fake_client = _patch_execution(monkeypatch, tmp_path)
+
+    response = client.get("/execution/demo/wallet")
+
+    assert response.status_code == 403
+    assert response.json()["detail"]["reason"] == "invalid_execution_api_token"
+    assert fake_client.client_factory_called["value"] is False
+
+
+def test_place_test_short_rejects_missing_token_before_client_construction(monkeypatch, tmp_path):
+    fake_client = _patch_execution(monkeypatch, tmp_path)
+
+    response = client.post(
+        "/execution/demo/place-test-short",
+        json={"symbol": "ENAUSDT", "notional_usdt": 10, "take_profit_pct": 0.06, "stop_loss_pct": 0.07},
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"]["reason"] == "invalid_execution_api_token"
+    assert fake_client.client_factory_called["value"] is False
+
+
+def test_place_test_short_rejects_invalid_token_before_client_construction(monkeypatch, tmp_path):
+    fake_client = _patch_execution(monkeypatch, tmp_path)
+
+    response = client.post(
+        "/execution/demo/place-test-short",
+        headers=_auth_headers("wrong-token"),
+        json={"symbol": "ENAUSDT", "notional_usdt": 10, "take_profit_pct": 0.06, "stop_loss_pct": 0.07},
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"]["reason"] == "invalid_execution_api_token"
+    assert fake_client.client_factory_called["value"] is False
 
 
 def test_place_test_short_rejects_when_disabled(monkeypatch, tmp_path):
@@ -116,6 +210,7 @@ def test_place_test_short_rejects_when_disabled(monkeypatch, tmp_path):
 
     response = client.post(
         "/execution/demo/place-test-short",
+        headers=_auth_headers(),
         json={"symbol": "ENAUSDT", "notional_usdt": 10, "take_profit_pct": 0.06, "stop_loss_pct": 0.07},
     )
 
@@ -133,6 +228,7 @@ def test_place_test_short_rejects_unknown_symbol(monkeypatch, tmp_path):
 
     response = client.post(
         "/execution/demo/place-test-short",
+        headers=_auth_headers(),
         json={"symbol": "ENAUSDT", "notional_usdt": 10, "take_profit_pct": 0.06, "stop_loss_pct": 0.07},
     )
 
@@ -146,6 +242,7 @@ def test_place_test_short_rejects_take_profit_pct_one_before_client_construction
 
     response = client.post(
         "/execution/demo/place-test-short",
+        headers=_auth_headers(),
         json={"symbol": "ENAUSDT", "notional_usdt": 10, "take_profit_pct": 1, "stop_loss_pct": 0.07},
     )
 
@@ -163,6 +260,7 @@ def test_place_test_short_rejects_take_profit_pct_above_one_with_journal(monkeyp
 
     response = client.post(
         "/execution/demo/place-test-short",
+        headers=_auth_headers(),
         json={"symbol": "ENAUSDT", "notional_usdt": 10, "take_profit_pct": 1.2, "stop_loss_pct": 0.07},
     )
 
@@ -180,6 +278,7 @@ def test_place_test_short_rejects_take_profit_pct_zero_with_journal(monkeypatch,
 
     response = client.post(
         "/execution/demo/place-test-short",
+        headers=_auth_headers(),
         json={"symbol": "ENAUSDT", "notional_usdt": 10, "take_profit_pct": 0, "stop_loss_pct": 0.07},
     )
 
@@ -197,6 +296,7 @@ def test_place_test_short_rejects_stop_loss_pct_one_before_client_construction(m
 
     response = client.post(
         "/execution/demo/place-test-short",
+        headers=_auth_headers(),
         json={"symbol": "ENAUSDT", "notional_usdt": 10, "take_profit_pct": 0.06, "stop_loss_pct": 1},
     )
 
@@ -211,6 +311,7 @@ def test_place_test_short_rejects_stop_loss_pct_above_one_with_journal(monkeypat
 
     response = client.post(
         "/execution/demo/place-test-short",
+        headers=_auth_headers(),
         json={"symbol": "ENAUSDT", "notional_usdt": 10, "take_profit_pct": 0.06, "stop_loss_pct": 1.2},
     )
 
@@ -226,7 +327,7 @@ def test_place_test_short_rejects_stop_loss_pct_above_one_with_journal(monkeypat
 def test_wallet_rejects_non_demo_base_url_without_constructing_client(monkeypatch, tmp_path):
     fake_client = _patch_execution(monkeypatch, tmp_path, base_url="https://api.bybit.com")
 
-    response = client.get("/execution/demo/wallet")
+    response = client.get("/execution/demo/wallet", headers=_auth_headers())
 
     assert response.status_code == 400
     assert response.json()["detail"]["reason"] == "non_demo_base_url"
@@ -246,7 +347,7 @@ def test_wallet_bybit_api_error_returns_sanitized_detail(monkeypatch, tmp_path):
 
     _patch_execution(monkeypatch, tmp_path, fake_client=ErrorClient())
 
-    response = client.get("/execution/demo/wallet")
+    response = client.get("/execution/demo/wallet", headers=_auth_headers())
 
     assert response.status_code == 502
     detail = response.json()["detail"]
@@ -259,11 +360,27 @@ def test_wallet_bybit_api_error_returns_sanitized_detail(monkeypatch, tmp_path):
     assert "secret" not in str(detail)
 
 
+def test_wallet_transport_error_returns_sanitized_detail(monkeypatch, tmp_path):
+    class TransportErrorClient(FakeClient):
+        def wallet_balance(self):
+            raise requests.RequestException("network down with secret should not leak")
+
+    _patch_execution(monkeypatch, tmp_path, fake_client=TransportErrorClient())
+
+    response = client.get("/execution/demo/wallet", headers=_auth_headers())
+
+    assert response.status_code == 502
+    detail = response.json()["detail"]
+    assert detail["reason"] == "bybit_transport_error"
+    assert "secret" not in str(detail)
+
+
 def test_place_test_short_uses_mock_client_and_writes_journal(monkeypatch, tmp_path):
     fake_client = _patch_execution(monkeypatch, tmp_path)
 
     response = client.post(
         "/execution/demo/place-test-short",
+        headers=_auth_headers(),
         json={"symbol": "ENAUSDT", "notional_usdt": 10, "take_profit_pct": 0.06, "stop_loss_pct": 0.07},
     )
 
@@ -302,6 +419,7 @@ def test_place_test_short_journals_order_preparation_error(monkeypatch, tmp_path
 
     response = client.post(
         "/execution/demo/place-test-short",
+        headers=_auth_headers(),
         json={"symbol": "ENAUSDT", "notional_usdt": 10, "take_profit_pct": 0.06, "stop_loss_pct": 0.07},
     )
 
@@ -311,3 +429,20 @@ def test_place_test_short_journals_order_preparation_error(monkeypatch, tmp_path
     last_row = journal.iloc[-1]
     assert last_row["status"] == "error"
     assert last_row["reason"] == "order_preparation_error"
+
+
+def test_place_test_short_daily_limit_blocks_second_request_before_order_placement(monkeypatch, tmp_path):
+    fake_client = _patch_execution(monkeypatch, tmp_path, max_daily_test_orders=1)
+    payload = {"symbol": "ENAUSDT", "notional_usdt": 10, "take_profit_pct": 0.06, "stop_loss_pct": 0.07}
+
+    first = client.post("/execution/demo/place-test-short", headers=_auth_headers(), json=payload)
+    second = client.post("/execution/demo/place-test-short", headers=_auth_headers(), json=payload)
+
+    assert first.status_code == 200
+    assert second.status_code == 400
+    assert second.json()["detail"]["reason"] == "daily_test_order_limit_reached"
+    assert fake_client.client_factory_called["count"] == 1
+    assert len(fake_client.place_calls) == 1
+    journal = read_journal(tmp_path / "execution_journal.csv")
+    assert list(journal["status"]) == ["sent", "rejected"]
+    assert list(journal["reason"]) == ["allowed", "daily_test_order_limit_reached"]
