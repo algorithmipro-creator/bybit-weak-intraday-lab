@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from datetime import datetime, timezone
 from typing import Any
 
@@ -30,9 +31,10 @@ def safe_float(value: Any) -> float | None:
     if value is None or value == "":
         return None
     try:
-        return float(value)
+        parsed = float(value)
     except (TypeError, ValueError):
         return None
+    return parsed if math.isfinite(parsed) else None
 
 
 def result_rows(payload: dict | None) -> list[dict]:
@@ -102,8 +104,10 @@ def normalize_open_orders(payload: dict | None) -> list[dict]:
     ]
 
 
-def select_latest_scanner_job(jobs: list[dict]) -> dict | None:
-    done_jobs = [job for job in jobs if job.get("status") == "done"]
+def select_latest_scanner_job(jobs: list[dict] | None) -> dict | None:
+    if jobs is None:
+        return None
+    done_jobs = [job for job in jobs if isinstance(job, dict) and job.get("status") == "done"]
     causal = [job for job in done_jobs if job.get("job_type") == "causal_scan"]
     regular = [job for job in done_jobs if job.get("job_type") in (None, "", "scan")]
     if causal:
@@ -146,7 +150,10 @@ def _epoch_millis_to_iso(value: Any) -> str | None:
     millis = safe_float(value)
     if millis is None:
         return None
-    return datetime.fromtimestamp(millis / 1000, tz=timezone.utc).isoformat()
+    try:
+        return datetime.fromtimestamp(millis / 1000, tz=timezone.utc).isoformat()
+    except (ValueError, OverflowError, OSError):
+        return None
 
 
 def _job_updated_at(job: dict) -> datetime:
@@ -164,7 +171,10 @@ def _frame(value: Any) -> pd.DataFrame:
         return pd.DataFrame()
     if isinstance(value, pd.DataFrame):
         return value.copy()
-    return pd.DataFrame(value)
+    try:
+        return pd.DataFrame(value)
+    except (TypeError, ValueError):
+        return pd.DataFrame()
 
 
 def _causal_watchlist(signals: Any, evaluations: Any) -> pd.DataFrame:

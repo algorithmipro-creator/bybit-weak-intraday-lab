@@ -22,6 +22,13 @@ def test_safe_float_handles_numbers_strings_and_missing_values() -> None:
     assert safe_float("not-a-number") is None
 
 
+def test_safe_float_rejects_non_finite_values() -> None:
+    assert safe_float("NaN") is None
+    assert safe_float(float("nan")) is None
+    assert safe_float("inf") is None
+    assert safe_float(float("inf")) is None
+
+
 def test_result_rows_extracts_bybit_result_list() -> None:
     assert result_rows({"result": {"list": [{"symbol": "ENAUSDT"}]}}) == [{"symbol": "ENAUSDT"}]
     assert result_rows({"result": {"list": None}}) == []
@@ -162,6 +169,14 @@ def test_normalize_open_orders_keeps_trigger_prices_and_statuses() -> None:
     ]
 
 
+def test_normalize_open_orders_handles_non_finite_timestamp() -> None:
+    payload = {"result": {"list": [{"symbol": "ENAUSDT", "createdTime": "NaN"}]}}
+
+    rows = normalize_open_orders(payload)
+
+    assert rows[0]["created_time"] is None
+
+
 def test_select_latest_scanner_job_prefers_latest_causal_scan() -> None:
     jobs = [
         {"job_id": "scan-new", "job_type": "scan", "status": "done", "updated_at": "2026-05-21T12:00:00+00:00"},
@@ -179,6 +194,13 @@ def test_select_latest_scanner_job_falls_back_to_regular_scan() -> None:
     ]
 
     assert select_latest_scanner_job(jobs)["job_id"] == "scan-new"
+
+
+def test_select_latest_scanner_job_handles_malformed_input() -> None:
+    assert select_latest_scanner_job(None) is None
+    assert select_latest_scanner_job(
+        ["bad", {"job_id": "scan", "job_type": "scan", "status": "done"}]
+    )["job_id"] == "scan"
 
 
 def test_build_scanner_watchlist_from_causal_signals() -> None:
@@ -260,6 +282,11 @@ def test_build_scanner_watchlist_matches_causal_evaluations_by_signal_time() -> 
 
     assert list(watchlist["outcome"]) == ["sl", "tp"]
     assert list(watchlist["pnl_underlying_pct"]) == [-0.07, 0.08]
+
+
+def test_build_scanner_watchlist_handles_malformed_inputs() -> None:
+    assert build_scanner_watchlist("causal_scan", signals="bad").empty
+    assert build_scanner_watchlist("scan", trades=object()).empty
 
 
 def test_select_latest_scanner_job_treats_missing_or_empty_job_type_as_regular_scan() -> None:
