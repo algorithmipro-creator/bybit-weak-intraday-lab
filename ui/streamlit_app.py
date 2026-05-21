@@ -11,6 +11,13 @@ import requests
 import streamlit as st
 
 from ui.account_backtest import AccountBacktestSettings, run_account_backtest
+from ui.bot_monitor import (
+    build_scanner_watchlist,
+    normalize_open_orders,
+    normalize_positions,
+    select_latest_scanner_job,
+    summarize_wallet,
+)
 from ui.result_summary import best_grid_result, trade_result_summary
 from ui.table_totals import append_account_total_row, append_trade_total_row
 
@@ -81,6 +88,20 @@ def money(value: Any) -> str:
     if value is None or pd.isna(value):
         return "n/a"
     return f"${float(value):,.2f}"
+
+
+def signed_money(value: Any) -> str:
+    if value is None or pd.isna(value):
+        return "n/a"
+    parsed = float(value)
+    sign = "+" if parsed > 0 else ""
+    return f"{sign}${parsed:,.2f}"
+
+
+def compact_count(value: Any) -> str:
+    if value is None or pd.isna(value):
+        return "0"
+    return str(int(value))
 
 
 def render_job_status(meta: dict) -> None:
@@ -265,6 +286,201 @@ def _symbol_query(symbol: str) -> str:
     return f"?symbol={cleaned}" if cleaned else ""
 
 
+def _safe_jobs(api_url: str) -> list[dict]:
+    try:
+        jobs = api_get("/jobs", api_url).json()
+    except Exception:
+        return []
+    return jobs if isinstance(jobs, list) else []
+
+
+def _frame_from_rows(rows) -> pd.DataFrame:
+    return pd.DataFrame(rows) if rows else pd.DataFrame()
+
+
+def _load_scanner_watchlist(api_url: str, jobs: list[dict]) -> pd.DataFrame:
+    latest_job = select_latest_scanner_job(jobs)
+    if not latest_job:
+        return pd.DataFrame()
+
+    job_id = latest_job.get("job_id")
+    if not job_id:
+        return pd.DataFrame()
+
+    job_type = latest_job.get("job_type") or "scan"
+    try:
+        if job_type == "causal_scan":
+            signals = csv_to_frame(api_get(f"/jobs/{job_id}/signals.csv", api_url).text)
+            evaluations = csv_to_frame(api_get(f"/jobs/{job_id}/evaluations.csv", api_url).text)
+            return build_scanner_watchlist(job_type, signals=signals, evaluations=evaluations)
+
+        trades = csv_to_frame(api_get(f"/jobs/{job_id}/trades.csv", api_url).text)
+        return build_scanner_watchlist(job_type, trades=trades)
+    except Exception:
+        return pd.DataFrame()
+
+
+def render_demo_test_short_form(api_url: str, execution_token: str, status_payload: dict) -> None:
+    execution_token = execution_token.strip()
+    whitelist = status_payload.get("whitelist") or []
+    default_symbol = str(whitelist[0]) if whitelist else "ENAUSDT"
+
+    with st.form("bot_monitor_demo_test_short_form"):
+        form_cols = st.columns(4)
+        symbol = form_cols[0].text_input("Symbol", default_symbol).strip().upper()
+        notional = form_cols[1].number_input("Notional USDT", min_value=1.0, value=5.0, step=1.0, format="%.2f")
+        take_profit = form_cols[2].number_input("Take profit %", min_value=0.1, value=6.0, step=0.5, format="%.2f")
+        stop_loss = form_cols[3].number_input("Stop loss %", min_value=0.1, value=7.0, step=0.5, format="%.2f")
+        submit = st.form_submit_button("Place Demo Test Short")
+
+    if submit:
+        if not execution_token:
+            st.error("Enter the execution API token in the sidebar before placing a demo test short.")
+            return
+
+        payload = {
+            "symbol": symbol,
+            "notional_usdt": float(notional),
+            "take_profit_pct": float(take_profit) / 100.0,
+            "stop_loss_pct": float(stop_loss) / 100.0,
+        }
+        try:
+            response = api_post("/execution/demo/place-test-short", payload, api_url, token=execution_token)
+            st.success("Demo test short submitted.")
+            st.json(response.json())
+        except Exception as exc:
+            st.error(f"Demo test short rejected or failed: {_safe_error(exc, execution_token)}")
+
+
+def render_bot_monitor(api_url: str, execution_token: str) -> None:
+    execution_token = execution_token.strip()
+    st.header("Bot Monitor")
+
+    health_payload, health_error = api_json_or_error("/health", api_url)
+    status_payload, status_error = api_json_or_error("/execution/demo/status", api_url)
+    status_payload = status_payload or {}
+    limits = status_payload.get("limits") or {}
+    jobs = _safe_jobs(api_url)
+    scanner_watchlist = _load_scanner_watchlist(api_url, jobs)
+
+    if status_error:
+        st.warning(f"Execution status unavailable: {status_error}")
+
+    status_cols = st.columns(6)
+    status_cols[0].metric("Backend", "offline" if health_error else "online")
+    status_cols[1].metric("Mode", status_payload.get("mode") or "unknown")
+    status_cols[2].metric("Execution", "enabled" if status_payload.get("enabled") else "disabled")
+    status_cols[3].metric("API keys", "configured" if status_payload.get("configured") else "missing")
+    token_status = "entered" if execution_token else ("configured" if status_payload.get("api_token_configured") else "missing")
+    status_cols[4].metric("Token", token_status)
+    status_cols[5].metric("Max notional", money(limits.get("max_demo_notional_usdt")))
+    st.caption("Bybit Demo monitor, reads account/scanner state and does not auto-enter signals.")
+
+    if health_error:
+        st.warning(f"Backend health unavailable: {health_error}")
+
+    wallet_payload = positions_payload = orders_payload = journal_payload = None
+    wallet_error = positions_error = orders_error = journal_error = None
+    positions_rows: list[dict] = []
+    orders_rows: list[dict] = []
+    wallet_summary = summarize_wallet(None)
+
+    if not execution_token:
+        st.info("Enter the execution API token in the sidebar to load demo account data and order controls.")
+    else:
+        wallet_payload, wallet_error = api_json_or_error("/execution/demo/wallet", api_url, token=execution_token)
+        positions_payload, positions_error = api_json_or_error("/execution/demo/positions", api_url, token=execution_token)
+        orders_payload, orders_error = api_json_or_error("/execution/demo/open-orders", api_url, token=execution_token)
+        journal_payload, journal_error = api_json_or_error("/execution/demo/journal?limit=25", api_url, token=execution_token)
+
+        if wallet_error:
+            st.warning(f"Wallet unavailable: {wallet_error}")
+        else:
+            wallet_summary = summarize_wallet(wallet_payload)
+
+        if orders_error:
+            st.warning(f"Open orders unavailable: {orders_error}")
+        else:
+            orders_rows = normalize_open_orders(orders_payload)
+
+        if positions_error:
+            st.warning(f"Positions unavailable: {positions_error}")
+        else:
+            positions_rows = normalize_positions(positions_payload, orders_payload if not orders_error else None)
+
+        if journal_error:
+            st.warning(f"Execution history unavailable: {journal_error}")
+
+    account_cols = st.columns(8)
+    account_cols[0].metric("Equity", money(wallet_summary.get("equity")))
+    account_cols[1].metric("Wallet", money(wallet_summary.get("wallet_balance")))
+    account_cols[2].metric("Available", money(wallet_summary.get("available_balance")))
+    account_cols[3].metric("Margin used", money(wallet_summary.get("margin_used")))
+    account_cols[4].metric("Unrealized PnL", signed_money(wallet_summary.get("unrealized_pnl")))
+    account_cols[5].metric("Positions", compact_count(len(positions_rows)))
+    account_cols[6].metric("Open orders", compact_count(len(orders_rows)))
+    account_cols[7].metric("Scanner signals", compact_count(len(scanner_watchlist)))
+
+    positions_frame = _frame_from_rows(positions_rows)
+    orders_frame = _frame_from_rows(orders_rows)
+    journal_rows = _result_list(journal_payload)
+    journal_frame = _frame_from_rows(journal_rows)
+
+    main_left, main_right = st.columns(2)
+    with main_left:
+        st.subheader("Open Positions")
+        if positions_error:
+            st.info("Positions are unavailable.")
+        elif positions_frame.empty:
+            st.info("No open positions.")
+        else:
+            st.dataframe(positions_frame, use_container_width=True, hide_index=True)
+    with main_right:
+        st.subheader("Scanner Watchlist")
+        if scanner_watchlist.empty:
+            st.info("No scanner watchlist rows available.")
+        else:
+            st.dataframe(scanner_watchlist, use_container_width=True, hide_index=True)
+
+    secondary_left, secondary_right = st.columns(2)
+    with secondary_left:
+        st.subheader("Open Orders")
+        if orders_error:
+            st.info("Open orders are unavailable.")
+        elif orders_frame.empty:
+            st.info("No open orders.")
+        else:
+            st.dataframe(orders_frame, use_container_width=True, hide_index=True)
+    with secondary_right:
+        st.subheader("Execution History")
+        if journal_error:
+            st.info("Execution history is unavailable.")
+        elif journal_frame.empty:
+            st.info("No execution history rows.")
+        else:
+            history_columns = [
+                column
+                for column in [
+                    "created_at_utc",
+                    "symbol",
+                    "side",
+                    "requested_notional_usdt",
+                    "qty",
+                    "take_profit",
+                    "stop_loss",
+                    "status",
+                    "reason",
+                    "bybit_ret_code",
+                    "bybit_ret_msg",
+                ]
+                if column in journal_frame.columns
+            ]
+            st.dataframe(journal_frame[history_columns], use_container_width=True, hide_index=True)
+
+    with st.expander("Controlled demo test short", expanded=False):
+        render_demo_test_short_form(api_url, execution_token, status_payload)
+
+
 def render_demo_execution(api_url: str, execution_token: str) -> None:
     execution_token = execution_token.strip()
     st.subheader("Bybit Demo Execution")
@@ -415,7 +631,7 @@ if run:
         st.error(f"Failed to start job: {exc}")
 
 st.divider()
-render_demo_execution(api_url, execution_token)
+render_bot_monitor(api_url, execution_token)
 
 st.header("Jobs")
 try:
