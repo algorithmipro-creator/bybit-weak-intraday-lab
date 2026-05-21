@@ -67,7 +67,10 @@ def _result_list(payload: dict | None) -> list[dict]:
 def _journal_rows(payload: dict | None) -> list[dict]:
     if not payload:
         return []
-    return payload.get("rows") or []
+    rows = payload.get("rows")
+    if not isinstance(rows, list):
+        return []
+    return [row for row in rows if isinstance(row, dict)]
 
 
 def parse_float_grid(value: str) -> list[float]:
@@ -275,23 +278,6 @@ def render_grid_overview(grid: pd.DataFrame) -> None:
     cols[5].metric("Avg exit min", number(best.get("avg_minutes_to_exit"), decimals=0))
 
 
-def _render_result_table(title: str, payload: dict | None, error: str | None) -> None:
-    st.markdown(f"**{title}**")
-    if error:
-        st.info(f"{title} unavailable: {error}")
-        return
-    rows = _result_list(payload)
-    if not rows:
-        st.info(f"No {title.lower()} rows returned.")
-        return
-    st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
-
-
-def _symbol_query(symbol: str) -> str:
-    cleaned = symbol.strip().upper()
-    return f"?symbol={cleaned}" if cleaned else ""
-
-
 def _safe_jobs(api_url: str) -> list[dict]:
     try:
         jobs = api_get("/jobs", api_url).json()
@@ -485,98 +471,6 @@ def render_bot_monitor(api_url: str, execution_token: str) -> None:
 
     with st.expander("Controlled demo test short", expanded=False):
         render_demo_test_short_form(api_url, execution_token, status_payload)
-
-
-def render_demo_execution(api_url: str, execution_token: str) -> None:
-    execution_token = execution_token.strip()
-    st.subheader("Bybit Demo Execution")
-    status_payload, status_error = api_json_or_error("/execution/demo/status", api_url)
-    if status_error:
-        st.error(f"Execution status unavailable: {status_error}")
-        return
-
-    status_payload = status_payload or {}
-    limits = status_payload.get("limits") or {}
-    whitelist = status_payload.get("whitelist") or []
-
-    cols = st.columns(5)
-    cols[0].metric("Mode", status_payload.get("mode") or "unknown")
-    cols[1].metric("Enabled", "yes" if status_payload.get("enabled") else "no")
-    cols[2].metric("API keys configured", "yes" if status_payload.get("configured") else "no")
-    cols[3].metric("Execution token configured", "yes" if status_payload.get("api_token_configured") else "no")
-    cols[4].metric("Journal rows", int(status_payload.get("journal_rows") or 0))
-    st.caption("Bybit Demo only. This panel does not place mainnet orders or auto-enter from signals.")
-
-    meta_left, meta_right = st.columns(2)
-    with meta_left:
-        st.markdown("**Endpoint**")
-        st.code(status_payload.get("base_url") or "n/a", language="text")
-    with meta_right:
-        st.markdown("**Whitelist and limits**")
-        whitelist_text = ", ".join(str(symbol) for symbol in whitelist) if whitelist else "none"
-        limits_text = (
-            f"Whitelist: {whitelist_text}\n"
-            f"Max notional: {limits.get('max_demo_notional_usdt', 'n/a')} USDT\n"
-            f"Max open positions: {limits.get('max_open_positions', 'n/a')}\n"
-            f"Max daily test orders: {limits.get('max_daily_test_orders', 'n/a')}"
-        )
-        st.code(limits_text, language="text")
-
-    if not execution_token:
-        st.info("Enter the execution API token in the sidebar to load demo account data and order controls.")
-        return
-
-    symbol_options = [""] + [str(symbol) for symbol in whitelist]
-    symbol_filter = st.selectbox(
-        "Symbol filter for positions and open orders",
-        symbol_options,
-        format_func=lambda value: "All whitelisted symbols" if value == "" else value,
-    )
-    query = _symbol_query(symbol_filter)
-
-    wallet_payload, wallet_error = api_json_or_error("/execution/demo/wallet", api_url, token=execution_token)
-    positions_payload, positions_error = api_json_or_error(
-        f"/execution/demo/positions{query}",
-        api_url,
-        token=execution_token,
-    )
-    orders_payload, orders_error = api_json_or_error(
-        f"/execution/demo/open-orders{query}",
-        api_url,
-        token=execution_token,
-    )
-
-    tab_wallet, tab_positions, tab_orders = st.tabs(["Wallet", "Positions", "Open Orders"])
-    with tab_wallet:
-        _render_result_table("Wallet", wallet_payload, wallet_error)
-    with tab_positions:
-        _render_result_table("Positions", positions_payload, positions_error)
-    with tab_orders:
-        _render_result_table("Open orders", orders_payload, orders_error)
-
-    default_symbol = str(whitelist[0]) if whitelist else "ENAUSDT"
-    with st.form("demo_test_short_form"):
-        st.markdown("**Controlled demo test short**")
-        form_cols = st.columns(4)
-        symbol = form_cols[0].text_input("Symbol", default_symbol).strip().upper()
-        notional = form_cols[1].number_input("Notional USDT", min_value=1.0, value=5.0, step=1.0, format="%.2f")
-        take_profit = form_cols[2].number_input("Take profit %", min_value=0.1, value=6.0, step=0.5, format="%.2f")
-        stop_loss = form_cols[3].number_input("Stop loss %", min_value=0.1, value=7.0, step=0.5, format="%.2f")
-        submit = st.form_submit_button("Place Demo Test Short")
-
-    if submit:
-        payload = {
-            "symbol": symbol,
-            "notional_usdt": float(notional),
-            "take_profit_pct": float(take_profit) / 100.0,
-            "stop_loss_pct": float(stop_loss) / 100.0,
-        }
-        try:
-            response = api_post("/execution/demo/place-test-short", payload, api_url, token=execution_token)
-            st.success("Demo test short submitted.")
-            st.json(response.json())
-        except Exception as exc:
-            st.error(f"Demo test short rejected or failed: {_safe_error(exc, execution_token)}")
 
 
 with st.sidebar:

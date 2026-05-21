@@ -153,3 +153,23 @@ def test_journal_rows_extracts_top_level_rows() -> None:
             "qty": "1",
         }
     ]
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"rows": "not-a-list"},
+        {"rows": {"symbol": "ENAUSDT"}},
+        {"rows": ["bad", 1, None]},
+    ],
+)
+def test_journal_rows_returns_empty_list_for_malformed_rows(payload) -> None:
+    helpers = _load_streamlit_helpers("_journal_rows")
+
+    assert helpers["_journal_rows"](payload) == []
+
+
+def test_journal_rows_keeps_only_dict_rows() -> None:
+    helpers = _load_streamlit_helpers("_journal_rows")
+
+    assert helpers["_journal_rows"]({"rows": [{"symbol": "ENAUSDT"}, "bad", 1, None]}) == [{"symbol": "ENAUSDT"}]
