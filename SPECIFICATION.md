@@ -13,8 +13,9 @@ The project turns an informal trading observation into a reproducible research w
 5. Simulate hypothetical short entries and TP/SL exits.
 6. Store metrics and candidate trades as CSV artifacts.
 7. Display jobs, tables and charts in a lightweight dashboard.
+8. Optionally connect to Bybit Demo Trading for guarded manual test-order verification.
 
-The system is intentionally scoped to research, backtesting and signal analysis. It does not place orders.
+The system is intentionally scoped to research, backtesting, signal analysis and demo-only execution testing. It does not place mainnet orders and does not route strategy signals into orders automatically.
 
 ## 2. Audience
 
@@ -28,9 +29,9 @@ The repository is prepared for three audiences:
 
 Current MVP does not include:
 
-- live order execution;
-- API key storage;
-- exchange account access;
+- mainnet/live order execution;
+- persistent API key storage;
+- automatic signal-to-order routing;
 - position sizing;
 - portfolio risk engine;
 - liquidation modeling;
@@ -191,7 +192,9 @@ Core modules:
 bybit_weak_intraday/core.py       strategy functions and simulation
 bybit_weak_intraday/archive.py    archive URL, download and CSV loading
 bybit_weak_intraday/scanner.py    multi-symbol/multi-day scan orchestration
+bybit_weak_intraday/execution/    demo-only safety, order payloads, journal and Bybit client
 backend/app/main.py               FastAPI routes
+backend/app/execution_routes.py   guarded Bybit Demo execution API
 backend/app/job_store.py          job metadata and CSV artifacts
 ui/streamlit_app.py               dashboard
 scripts/run_archive_scan.py       command-line scanner
@@ -266,6 +269,40 @@ Downloads TP/SL grid aggregate output for optimizer jobs.
 
 Downloads per-combo trade output for optimizer jobs.
 
+### Demo execution boundary
+
+The execution API targets Bybit Demo Trading only.
+
+Unauthenticated status endpoint:
+
+```text
+GET /execution/demo/status
+```
+
+Protected demo account and test-order endpoints:
+
+```text
+GET  /execution/demo/wallet
+GET  /execution/demo/positions
+GET  /execution/demo/open-orders
+POST /execution/demo/place-test-short
+```
+
+Protected endpoints require `X-BWI-Execution-Token` to match `BWI_EXECUTION_API_TOKEN`. The token is separate from Bybit credentials and is not displayed in the UI.
+
+Order placement is disabled by default and additionally requires:
+
+```text
+BWI_EXECUTION_MODE=demo
+BWI_EXECUTION_ENABLED=true
+BWI_BYBIT_DEMO_BASE_URL=https://api-demo.bybit.com
+Bybit Demo API key and secret
+whitelisted symbol
+max notional, max open-position and max daily-order limits
+```
+
+The supported order action is a guarded tiny `linear` short test order with backend-computed quantity, take profit and stop loss. Mainnet execution and automatic signal-to-order routing remain out of scope until a separate design and risk review.
+
 ## 9. Output Artifacts
 
 `metrics.csv` contains one row per scored symbol/day where data was available.
@@ -333,7 +370,7 @@ Add causal/live-scan-safe features that only use data available at signal time.
 
 The MVP backend is designed for private/local use. Before exposing it publicly:
 
-- add authentication;
+- keep execution endpoints behind the `BWI_EXECUTION_API_TOKEN` header and a private network or reverse proxy;
 - validate `job_id` path params;
 - limit date ranges;
 - limit concurrent jobs;
@@ -350,7 +387,7 @@ full-universe scans must set max_symbols from 1 to 500
 manual symbol lists are capped at 500 symbols
 ```
 
-These limits reduce accidental resource exhaustion. They are not a substitute for authentication or reverse-proxy access control.
+These limits reduce accidental resource exhaustion. They are not a substitute for private network deployment, reverse-proxy access control and secret management.
 
 ### 10.3 Statistical Validation Risk
 
@@ -385,7 +422,12 @@ Current tests cover:
 
 - tick normalization;
 - OHLC/VWAP bar construction path metrics;
-- default strategy config.
+- strategy scoring and scanner paths;
+- causal signal separation;
+- TP/SL grid optimization;
+- account backtest summaries;
+- table totals;
+- Bybit Demo execution safety gates, journal, order payloads, signed client, API routes and UI helpers.
 
 Run:
 
@@ -395,11 +437,10 @@ python -m pytest -q
 
 Recommended next tests:
 
-- API request validation;
-- job path safety;
 - known fixture scan;
-- TP/SL edge cases;
-- causal signal regression tests.
+- broader causal signal regression fixtures;
+- execution concurrency tests if the backend moves beyond one process;
+- manual Bybit Demo smoke tests with tiny whitelisted orders.
 
 ## 12. Roadmap
 
@@ -438,11 +479,12 @@ Phase 4: Alerts and paper mode
 scheduled scans
 Telegram/Discord alerts
 paper-trading journal
-no live execution by default
+guarded Bybit Demo execution verification
+no mainnet execution by default
 ```
 
 Phase 5: Execution review
 
 ```text
-Only after validation: decide whether live execution belongs in a separate repository/module.
+Only after demo validation and a separate risk review: decide whether live execution belongs in a separate repository/module.
 ```

@@ -33,13 +33,15 @@ The project scores each symbol/day, finds candidate entries and measures what ha
 - Simulates short-side TP/SL outcomes tick by tick.
 - Saves metrics and trade simulations as CSV.
 - Provides a FastAPI backend and Streamlit dashboard.
+- Includes a guarded Bybit Demo panel for manual tiny test-order verification.
 - Runs locally or on VPS through Docker Compose.
 
 ## What It Does Not Do
 
-- It does not place live orders.
-- It does not use exchange API keys.
+- It does not place mainnet orders.
+- It does not store exchange API keys in the repository.
 - It does not manage real positions.
+- It does not route signals into orders automatically.
 - It does not include fees, funding, slippage or order-book depth yet.
 
 ## Current Architecture
@@ -58,6 +60,9 @@ metrics.csv / trades.csv
         |
         v
 FastAPI backend + Streamlit dashboard
+        |
+        v
+optional Bybit Demo account view and guarded tiny test short
 ```
 
 ## Why The Structure Is Useful
@@ -85,7 +90,7 @@ The next important engineering step is a causal signal mode where every feature 
 3. API auth, job limits and safer VPS defaults.
 4. Funding/open-interest features.
 5. Scheduled scans and signal alerts.
-6. Paper-trading journal.
+6. Manual Bybit Demo verification and paper-trading journal.
 
 ## Demo Flow
 
@@ -96,4 +101,5 @@ The next important engineering step is a causal signal mode where every feature 
 5. Open Streamlit UI.
 6. Launch a small symbol/date scan.
 7. Download and inspect `metrics.csv` and `trades.csv`.
-8. Discuss roadmap and risk boundaries.
+8. Show the Bybit Demo Execution panel in disabled/status-only mode.
+9. Discuss roadmap and risk boundaries.

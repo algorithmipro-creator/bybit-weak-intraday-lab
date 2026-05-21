@@ -1600,10 +1600,12 @@ Auto-entry from causal signals remains a later phase after this slice is manuall
 Run:
 
 ```powershell
-..\..\.venv\Scripts\python.exe -m pytest tests\test_execution_safety.py tests\test_execution_journal.py tests\test_execution_orders.py tests\test_bybit_demo_client.py tests\test_execution_api.py -q
+..\..\.venv\Scripts\python.exe -m pytest tests\test_execution_safety.py tests\test_execution_journal.py tests\test_execution_orders.py tests\test_bybit_demo_client.py tests\test_execution_api.py tests\test_streamlit_demo_execution_helpers.py -q
 ```
 
-Expected: `27 passed`.
+Expected: `85 passed`.
+
+Note: later hardening added an execution API token, extra safety tests and Streamlit helper tests, so the final branch reports a larger test count.
 
 - [ ] **Step 5: Run full verification**
 
@@ -1620,7 +1622,7 @@ Expected:
 
 ```text
 py_compile exits 0
-pytest reports `70 passed`
+pytest reports `128 passed`
 git diff --check prints no errors
 git status shows only expected docs changes before the final commit
 ```
@@ -1658,15 +1660,16 @@ $env:BWI_BYBIT_DEMO_API_KEY=$env:LOCAL_BYBIT_DEMO_API_KEY
 $env:BWI_BYBIT_DEMO_API_SECRET=$env:LOCAL_BYBIT_DEMO_API_SECRET
 $env:BWI_BYBIT_DEMO_BASE_URL='https://api-demo.bybit.com'
 $env:BWI_EXECUTION_SYMBOL_WHITELIST='ENAUSDT'
+$env:BWI_EXECUTION_API_TOKEN='local-demo-token-change-me'
 ```
 
 Start API/UI. First verify:
 
 ```powershell
 Invoke-WebRequest -UseBasicParsing http://127.0.0.1:8000/execution/demo/status
-Invoke-WebRequest -UseBasicParsing http://127.0.0.1:8000/execution/demo/wallet
-Invoke-WebRequest -UseBasicParsing http://127.0.0.1:8000/execution/demo/positions
-Invoke-WebRequest -UseBasicParsing http://127.0.0.1:8000/execution/demo/open-orders
+Invoke-WebRequest -UseBasicParsing http://127.0.0.1:8000/execution/demo/wallet -Headers @{'X-BWI-Execution-Token'=$env:BWI_EXECUTION_API_TOKEN}
+Invoke-WebRequest -UseBasicParsing http://127.0.0.1:8000/execution/demo/positions -Headers @{'X-BWI-Execution-Token'=$env:BWI_EXECUTION_API_TOKEN}
+Invoke-WebRequest -UseBasicParsing http://127.0.0.1:8000/execution/demo/open-orders -Headers @{'X-BWI-Execution-Token'=$env:BWI_EXECUTION_API_TOKEN}
 ```
 
 Then enable order placement only for the tiny test:
@@ -1680,6 +1683,7 @@ Submit one test short from the UI or with:
 ```powershell
 Invoke-WebRequest -UseBasicParsing http://127.0.0.1:8000/execution/demo/place-test-short `
   -Method POST `
+  -Headers @{'X-BWI-Execution-Token'=$env:BWI_EXECUTION_API_TOKEN} `
   -ContentType 'application/json' `
   -Body '{"symbol":"ENAUSDT","notional_usdt":10,"take_profit_pct":0.06,"stop_loss_pct":0.07}'
 ```
