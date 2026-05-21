@@ -101,6 +101,35 @@ def test_count_daily_test_orders_empty_existing_file_returns_zero(tmp_path) -> N
     assert count_daily_test_orders(path, date(2026, 5, 21)) == 0
 
 
+def test_read_journal_drops_extra_columns_from_existing_csv(tmp_path) -> None:
+    path = tmp_path / "execution_journal.csv"
+    path.write_text(
+        "created_at_utc,status,mode,api_secret\n"
+        "2026-05-21T10:00:00+00:00,accepted,demo,must-not-leak\n",
+        encoding="utf-8",
+    )
+
+    frame = read_journal(path)
+
+    assert list(frame.columns) == JOURNAL_COLUMNS
+    assert "api_secret" not in frame.columns
+
+
+def test_read_journal_adds_missing_columns_from_existing_csv(tmp_path) -> None:
+    path = tmp_path / "execution_journal.csv"
+    path.write_text(
+        "created_at_utc,status,mode\n"
+        "2026-05-21T10:00:00+00:00,accepted,demo\n",
+        encoding="utf-8",
+    )
+
+    frame = read_journal(path)
+
+    assert list(frame.columns) == JOURNAL_COLUMNS
+    assert "event_id" in frame.columns
+    assert "raw_response_path" in frame.columns
+
+
 def test_read_journal_missing_file_returns_empty_frame(tmp_path) -> None:
     frame = read_journal(tmp_path / "missing.csv")
 

@@ -47,9 +47,10 @@ def read_journal(path: str | Path) -> pd.DataFrame:
     if journal_path.stat().st_size == 0:
         return pd.DataFrame(columns=JOURNAL_COLUMNS)
     try:
-        return pd.read_csv(journal_path)
+        frame = pd.read_csv(journal_path)
     except pd.errors.EmptyDataError:
         return pd.DataFrame(columns=JOURNAL_COLUMNS)
+    return frame.reindex(columns=JOURNAL_COLUMNS)
 
 
 def count_daily_test_orders(path: str | Path, day: date) -> int:
