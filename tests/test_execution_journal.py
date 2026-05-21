@@ -45,14 +45,43 @@ def test_append_journal_event_creates_csv_with_expected_columns(tmp_path) -> Non
     assert "api_secret" not in frame.columns
 
 
+def test_append_journal_event_writes_header_for_empty_existing_file(tmp_path) -> None:
+    path = tmp_path / "execution_journal.csv"
+    path.touch()
+
+    append_journal_event(
+        path,
+        {
+            "created_at_utc": "2026-05-21T10:00:00+00:00",
+            "mode": "demo",
+            "status": "accepted",
+        },
+    )
+
+    frame = read_journal(path)
+
+    assert list(frame.columns) == JOURNAL_COLUMNS
+    assert len(frame) == 1
+    assert frame.loc[0, "status"] == "accepted"
+
+
 def test_count_daily_test_orders_counts_only_accepted_or_sent_rows(tmp_path) -> None:
     path = tmp_path / "execution_journal.csv"
-    append_journal_event(path, {"created_at_utc": "2026-05-21T10:00:00+00:00", "status": "accepted"})
-    append_journal_event(path, {"created_at_utc": "2026-05-21T11:00:00+00:00", "status": "sent"})
-    append_journal_event(path, {"created_at_utc": "2026-05-21T12:00:00+00:00", "status": "rejected"})
-    append_journal_event(path, {"created_at_utc": "2026-05-20T12:00:00+00:00", "status": "accepted"})
+    append_journal_event(path, {"created_at_utc": "2026-05-21T10:00:00+00:00", "mode": "demo", "status": " Accepted "})
+    append_journal_event(path, {"created_at_utc": "2026-05-21T11:00:00+00:00", "mode": "demo", "status": " Sent "})
+    append_journal_event(path, {"created_at_utc": "2026-05-21T12:00:00+00:00", "mode": "demo", "status": "rejected"})
+    append_journal_event(path, {"created_at_utc": "2026-05-21T13:00:00+00:00", "mode": "paper", "status": "accepted"})
+    append_journal_event(path, {"created_at_utc": "2026-05-20T12:00:00+00:00", "mode": "demo", "status": "accepted"})
 
     assert count_daily_test_orders(path, date(2026, 5, 21)) == 2
+
+
+def test_count_daily_test_orders_ignores_malformed_timestamps(tmp_path) -> None:
+    path = tmp_path / "execution_journal.csv"
+    append_journal_event(path, {"created_at_utc": "not-a-date", "mode": "demo", "status": "accepted"})
+    append_journal_event(path, {"created_at_utc": "2026-05-21T10:00:00+00:00", "mode": "demo", "status": "accepted"})
+
+    assert count_daily_test_orders(path, date(2026, 5, 21)) == 1
 
 
 def test_read_journal_missing_file_returns_empty_frame(tmp_path) -> None:

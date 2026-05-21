@@ -35,8 +35,9 @@ def _row_from_event(event: dict[str, Any]) -> dict[str, Any]:
 def append_journal_event(path: str | Path, event: dict[str, Any]) -> None:
     journal_path = Path(path)
     journal_path.parent.mkdir(parents=True, exist_ok=True)
+    write_header = not journal_path.exists() or journal_path.stat().st_size == 0
     row = pd.DataFrame([_row_from_event(event)], columns=JOURNAL_COLUMNS)
-    row.to_csv(journal_path, mode="a", header=not journal_path.exists(), index=False)
+    row.to_csv(journal_path, mode="a", header=write_header, index=False)
 
 
 def read_journal(path: str | Path) -> pd.DataFrame:
@@ -48,9 +49,15 @@ def read_journal(path: str | Path) -> pd.DataFrame:
 
 def count_daily_test_orders(path: str | Path, day: date) -> int:
     frame = read_journal(path)
-    if frame.empty or "created_at_utc" not in frame.columns or "status" not in frame.columns:
+    if (
+        frame.empty
+        or "created_at_utc" not in frame.columns
+        or "status" not in frame.columns
+        or "mode" not in frame.columns
+    ):
         return 0
-    created = pd.to_datetime(frame["created_at_utc"], errors="coerce", utc=True)
-    statuses = frame["status"].astype(str).str.lower()
-    mask = (created.dt.date == day) & statuses.isin(COUNTED_ORDER_STATUSES)
+    created = pd.to_datetime(frame["created_at_utc"], errors="coerce", utc=True, format="ISO8601")
+    statuses = frame["status"].astype(str).str.strip().str.lower()
+    modes = frame["mode"].astype(str).str.strip().str.lower()
+    mask = (created.dt.date == day) & statuses.isin(COUNTED_ORDER_STATUSES) & (modes == "demo")
     return int(mask.sum())
