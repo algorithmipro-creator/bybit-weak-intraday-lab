@@ -16,13 +16,18 @@ def test_nav_pages_match_clean_monitor_design() -> None:
 
 
 def test_ensure_navigation_state_sets_defaults_without_overwriting_existing_values() -> None:
-    state = {"bwi_api_url": "http://custom:8000", "bwi_selected_page": "Reports"}
+    state = {
+        "bwi_api_url": "http://custom:8000",
+        "bwi_execution_token": "secret",
+        "bwi_connected": True,
+        "bwi_selected_page": "Reports",
+    }
 
     ensure_navigation_state(state, default_api_url="http://default:8000")
 
     assert state["bwi_api_url"] == "http://custom:8000"
-    assert state["bwi_execution_token"] == ""
-    assert state["bwi_connected"] is False
+    assert state["bwi_execution_token"] == "secret"
+    assert state["bwi_connected"] is True
     assert state["bwi_selected_page"] == "Reports"
 
 
@@ -52,6 +57,8 @@ def test_mark_connected_stores_session_local_connection_values() -> None:
     mark_connected(state, api_url="http://api:8000/", execution_token="  token  ")
 
     assert is_connected(state) is True
+    assert state["bwi_api_url"] == "http://api:8000"
+    assert state["bwi_execution_token"] == "token"
     assert connection_values(state) == {
         "api_url": "http://api:8000",
         "execution_token": "token",
