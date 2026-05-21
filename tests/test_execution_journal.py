@@ -59,3 +59,4 @@ def test_read_journal_missing_file_returns_empty_frame(tmp_path) -> None:
     frame = read_journal(tmp_path / "missing.csv")
 
     assert frame.empty
+    assert list(frame.columns) == JOURNAL_COLUMNS
