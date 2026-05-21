@@ -122,6 +122,20 @@ def test_static_gate_blocks_oversized_notional() -> None:
     assert decision.reason == "notional_limit_exceeded"
 
 
+def test_static_gate_blocks_invalid_notional() -> None:
+    decision = validate_static_demo_order_request(
+        _config(),
+        symbol="ENAUSDT",
+        notional_usdt=0,
+        take_profit_pct=0.06,
+        stop_loss_pct=0.07,
+        daily_test_order_count=0,
+    )
+
+    assert not decision.allowed
+    assert decision.reason == "invalid_notional"
+
+
 def test_static_gate_blocks_missing_tp_sl() -> None:
     decision = validate_static_demo_order_request(
         _config(),
