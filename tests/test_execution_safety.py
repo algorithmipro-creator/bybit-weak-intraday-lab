@@ -80,9 +80,37 @@ def test_static_gate_blocks_mainnet_base_url() -> None:
     assert decision.reason == "non_demo_base_url"
 
 
+def test_static_gate_blocks_trailing_slash_demo_base_url() -> None:
+    decision = validate_static_demo_order_request(
+        _config(base_url="https://api-demo.bybit.com/"),
+        symbol="ENAUSDT",
+        notional_usdt=10,
+        take_profit_pct=0.06,
+        stop_loss_pct=0.07,
+        daily_test_order_count=0,
+    )
+
+    assert not decision.allowed
+    assert decision.reason == "non_demo_base_url"
+
+
 def test_static_gate_blocks_missing_keys() -> None:
     decision = validate_static_demo_order_request(
         _config(api_key="", api_secret=""),
+        symbol="ENAUSDT",
+        notional_usdt=10,
+        take_profit_pct=0.06,
+        stop_loss_pct=0.07,
+        daily_test_order_count=0,
+    )
+
+    assert not decision.allowed
+    assert decision.reason == "missing_demo_api_keys"
+
+
+def test_static_gate_blocks_whitespace_keys() -> None:
+    decision = validate_static_demo_order_request(
+        _config(api_key=" ", api_secret="\t"),
         symbol="ENAUSDT",
         notional_usdt=10,
         take_profit_pct=0.06,
@@ -136,12 +164,40 @@ def test_static_gate_blocks_invalid_notional() -> None:
     assert decision.reason == "invalid_notional"
 
 
+def test_static_gate_blocks_non_finite_notional() -> None:
+    decision = validate_static_demo_order_request(
+        _config(),
+        symbol="ENAUSDT",
+        notional_usdt=float("nan"),
+        take_profit_pct=0.06,
+        stop_loss_pct=0.07,
+        daily_test_order_count=0,
+    )
+
+    assert not decision.allowed
+    assert decision.reason == "invalid_notional"
+
+
 def test_static_gate_blocks_missing_tp_sl() -> None:
     decision = validate_static_demo_order_request(
         _config(),
         symbol="ENAUSDT",
         notional_usdt=10,
         take_profit_pct=0,
+        stop_loss_pct=0.07,
+        daily_test_order_count=0,
+    )
+
+    assert not decision.allowed
+    assert decision.reason == "missing_take_profit_or_stop_loss"
+
+
+def test_static_gate_blocks_non_finite_take_profit() -> None:
+    decision = validate_static_demo_order_request(
+        _config(),
+        symbol="ENAUSDT",
+        notional_usdt=10,
+        take_profit_pct=float("nan"),
         stop_loss_pct=0.07,
         daily_test_order_count=0,
     )
@@ -183,3 +239,10 @@ def test_position_gate_blocks_open_position_limit() -> None:
 
     assert not decision.allowed
     assert decision.reason == "open_position_limit_reached"
+
+
+def test_position_gate_allows_below_open_position_limit() -> None:
+    decision = validate_position_limit(_config(max_open_positions=1), open_positions_count=0)
+
+    assert decision.allowed
+    assert decision.reason == "allowed"

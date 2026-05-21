@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import Sequence
 
@@ -56,17 +57,22 @@ def validate_static_demo_order_request(
         return _blocked("execution_mode_not_demo")
     if not config.execution_enabled:
         return _blocked("execution_disabled")
-    if config.base_url.rstrip("/") != DEMO_BASE_URL:
+    if config.base_url != DEMO_BASE_URL:
         return _blocked("non_demo_base_url")
-    if not config.api_key or not config.api_secret:
+    if not config.api_key.strip() or not config.api_secret.strip():
         return _blocked("missing_demo_api_keys")
     if normalized_symbol not in config.symbol_whitelist:
         return _blocked("symbol_not_whitelisted")
-    if notional_usdt <= 0:
+    if not math.isfinite(float(notional_usdt)) or notional_usdt <= 0:
         return _blocked("invalid_notional")
     if notional_usdt > config.max_demo_notional_usdt:
         return _blocked("notional_limit_exceeded")
-    if take_profit_pct <= 0 or stop_loss_pct <= 0:
+    if (
+        not math.isfinite(float(take_profit_pct))
+        or not math.isfinite(float(stop_loss_pct))
+        or take_profit_pct <= 0
+        or stop_loss_pct <= 0
+    ):
         return _blocked("missing_take_profit_or_stop_loss")
     if daily_test_order_count >= config.max_daily_test_orders:
         return _blocked("daily_test_order_limit_reached")
