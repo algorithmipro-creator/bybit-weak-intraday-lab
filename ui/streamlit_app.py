@@ -560,7 +560,7 @@ def render_bot_monitor(api_url: str, execution_token: str) -> None:
     wallet_summary = summarize_wallet(None)
 
     if not execution_token:
-        st.info("Connect with an execution API token to load demo account data and order controls.")
+        st.info("Connect in Settings to load demo account data.")
     else:
         wallet_payload, wallet_error = api_json_or_error("/execution/demo/wallet", api_url, token=execution_token)
         positions_payload, positions_error = api_json_or_error("/execution/demo/positions", api_url, token=execution_token)
@@ -594,7 +594,7 @@ def render_bot_monitor(api_url: str, execution_token: str) -> None:
         scanner_watchlist=scanner_watchlist,
     )
     if not execution_token:
-        st.info("Connect with an execution API token to load demo account data and order controls.")
+        st.info("Connect in Settings to load demo account data.")
     _render_monitor_visual_charts(positions_frame, scanner_watchlist)
 
 
@@ -996,6 +996,9 @@ def render_execution_history_page(api_url: str, execution_token: str) -> None:
 
 def render_settings_page(api_url: str, execution_token: str) -> None:
     st.header("Settings")
+    flash_message = st.session_state.pop("settings_reconnect_flash", None)
+    if flash_message:
+        st.success(str(flash_message))
     st.caption("Connection settings are session-local and are not written to disk.")
 
     new_api_url = st.text_input("Backend API URL", value=api_url.rstrip("/")).strip().rstrip("/")
@@ -1011,7 +1014,8 @@ def render_settings_page(api_url: str, execution_token: str) -> None:
         ok, message = validate_connection(new_api_url, token_to_use)
         if ok:
             mark_connected(st.session_state, api_url=new_api_url, execution_token=token_to_use)
-            st.success(message)
+            st.session_state[SELECTED_PAGE_KEY] = "Settings"
+            st.session_state["settings_reconnect_flash"] = "Connection updated."
             st.rerun()
         else:
             st.error(message)

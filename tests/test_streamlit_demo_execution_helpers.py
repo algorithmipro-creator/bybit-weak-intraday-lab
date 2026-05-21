@@ -148,9 +148,23 @@ def test_settings_page_owns_connection_and_demo_controls() -> None:
     assert "Reconnect" in settings_source
     assert "Backend API URL" not in monitor_source
     assert "Execution token" not in monitor_source
+    assert "Reconnect" not in monitor_source
     assert "render_demo_test_short_form" not in monitor_source
     assert "Backend API URL" not in bot_monitor_source
+    assert "Execution API token" not in bot_monitor_source
+    assert "API token" not in bot_monitor_source
+    assert "Reconnect" not in bot_monitor_source
     assert "render_demo_test_short_form" not in bot_monitor_source
+
+
+def test_settings_reconnect_feedback_uses_session_flash_before_rerun() -> None:
+    settings_source = _function_source("render_settings_page")
+
+    assert "settings_reconnect_flash" in settings_source
+    assert "st.session_state.pop" in settings_source
+    assert "st.session_state[\"settings_reconnect_flash\"]" in settings_source
+    assert "st.success(message)" not in settings_source
+    assert "st.rerun()" in settings_source
 
 
 def test_secondary_menu_contains_clean_monitor_sections() -> None:
