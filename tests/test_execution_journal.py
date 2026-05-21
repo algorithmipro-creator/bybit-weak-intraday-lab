@@ -65,6 +65,53 @@ def test_append_journal_event_writes_header_for_empty_existing_file(tmp_path) ->
     assert frame.loc[0, "status"] == "accepted"
 
 
+def test_append_journal_event_normalizes_existing_extra_column_file(tmp_path) -> None:
+    path = tmp_path / "execution_journal.csv"
+    path.write_text(
+        "created_at_utc,status,mode,api_secret\n"
+        "2026-05-21T10:00:00+00:00,accepted,demo,must-not-leak\n",
+        encoding="utf-8",
+    )
+
+    append_journal_event(
+        path,
+        {
+            "created_at_utc": "2026-05-21T11:00:00+00:00",
+            "mode": "demo",
+            "status": "sent",
+        },
+    )
+
+    frame = read_journal(path)
+
+    assert list(frame.columns) == JOURNAL_COLUMNS
+    assert "api_secret" not in frame.columns
+    assert len(frame) == 2
+
+
+def test_append_journal_event_normalizes_existing_missing_column_file(tmp_path) -> None:
+    path = tmp_path / "execution_journal.csv"
+    path.write_text(
+        "created_at_utc,status,mode\n"
+        "2026-05-21T10:00:00+00:00,accepted,demo\n",
+        encoding="utf-8",
+    )
+
+    append_journal_event(
+        path,
+        {
+            "created_at_utc": "2026-05-21T11:00:00+00:00",
+            "mode": "demo",
+            "status": "sent",
+        },
+    )
+
+    frame = read_journal(path)
+
+    assert list(frame.columns) == JOURNAL_COLUMNS
+    assert len(frame) == 2
+
+
 def test_count_daily_test_orders_counts_only_accepted_or_sent_rows(tmp_path) -> None:
     path = tmp_path / "execution_journal.csv"
     append_journal_event(path, {"created_at_utc": "2026-05-21T10:00:00+00:00", "mode": "demo", "status": " Accepted "})

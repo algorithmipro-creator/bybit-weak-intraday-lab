@@ -32,10 +32,26 @@ def _row_from_event(event: dict[str, Any]) -> dict[str, Any]:
     return {column: event.get(column, "") for column in JOURNAL_COLUMNS}
 
 
+def _has_canonical_header(path: Path) -> bool:
+    try:
+        with path.open("r", encoding="utf-8-sig", newline="") as handle:
+            header = handle.readline().strip()
+    except OSError:
+        return False
+    return header.split(",") == JOURNAL_COLUMNS
+
+
+def _normalize_existing_journal(path: Path) -> None:
+    frame = read_journal(path)
+    frame.to_csv(path, index=False)
+
+
 def append_journal_event(path: str | Path, event: dict[str, Any]) -> None:
     journal_path = Path(path)
     journal_path.parent.mkdir(parents=True, exist_ok=True)
     write_header = not journal_path.exists() or journal_path.stat().st_size == 0
+    if not write_header and not _has_canonical_header(journal_path):
+        _normalize_existing_journal(journal_path)
     row = pd.DataFrame([_row_from_event(event)], columns=JOURNAL_COLUMNS)
     row.to_csv(journal_path, mode="a", header=write_header, index=False)
 
