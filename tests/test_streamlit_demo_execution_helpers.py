@@ -118,8 +118,7 @@ def test_execution_token_messages_do_not_reference_sidebar() -> None:
 def test_monitor_page_shows_only_clean_live_overview() -> None:
     bot_monitor_source = _function_source("render_bot_monitor")
 
-    assert "build_executive_overview_html" in bot_monitor_source
-    assert "build_visual_panels_html" in bot_monitor_source
+    assert "_render_variant_a_visual_overview" in bot_monitor_source
     assert "_render_monitor_visual_charts" in bot_monitor_source
     assert "st.dataframe(positions_frame" not in bot_monitor_source
     assert "st.dataframe(orders_frame" not in bot_monitor_source
@@ -152,9 +151,15 @@ def test_secondary_menu_contains_clean_monitor_sections() -> None:
 def test_bot_monitor_uses_visual_overview_and_charts() -> None:
     source = _function_source("render_bot_monitor")
 
+    assert "_render_variant_a_visual_overview" in source
+    assert "_render_monitor_visual_charts" in source
+
+
+def test_variant_a_visual_overview_uses_visual_builders() -> None:
+    source = _function_source("_render_variant_a_visual_overview")
+
     assert "build_executive_overview_html" in source
     assert "build_visual_panels_html" in source
-    assert "_render_monitor_visual_charts" in source
 
 
 class FakeResponse:

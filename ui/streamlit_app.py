@@ -583,8 +583,6 @@ def render_bot_monitor(api_url: str, execution_token: str) -> None:
 
     positions_frame = _frame_from_rows(positions_rows)
 
-    # Keep Monitor limited to the visual overview built by build_executive_overview_html
-    # and build_visual_panels_html, plus the supporting live charts below.
     _render_variant_a_visual_overview(
         health_error=health_error,
         status_payload=status_payload,
