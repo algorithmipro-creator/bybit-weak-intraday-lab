@@ -266,6 +266,7 @@ def _symbol_query(symbol: str) -> str:
 
 
 def render_demo_execution(api_url: str, execution_token: str) -> None:
+    execution_token = execution_token.strip()
     st.subheader("Bybit Demo Execution")
     status_payload, status_error = api_json_or_error("/execution/demo/status", api_url)
     if status_error:

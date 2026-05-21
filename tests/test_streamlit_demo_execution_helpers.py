@@ -56,6 +56,40 @@ def test_api_get_passes_execution_token_header_only_when_provided() -> None:
     ]
 
 
+def test_api_post_passes_execution_token_header_only_when_provided() -> None:
+    helpers = _load_streamlit_helpers("api_post")
+    calls = []
+
+    def fake_post(url, *, json, timeout, headers=None):
+        calls.append({"url": url, "json": json, "timeout": timeout, "headers": headers})
+        return FakeResponse()
+
+    helpers["requests"] = SimpleNamespace(post=fake_post)
+
+    helpers["api_post"]("/jobs/scan", {"symbols": ["ENAUSDT"]}, "http://api")
+    helpers["api_post"](
+        "/execution/demo/place-test-short",
+        {"symbol": "ENAUSDT"},
+        "http://api",
+        token="secret-token",
+    )
+
+    assert calls == [
+        {
+            "url": "http://api/jobs/scan",
+            "json": {"symbols": ["ENAUSDT"]},
+            "timeout": 30,
+            "headers": None,
+        },
+        {
+            "url": "http://api/execution/demo/place-test-short",
+            "json": {"symbol": "ENAUSDT"},
+            "timeout": 30,
+            "headers": {"X-BWI-Execution-Token": "secret-token"},
+        },
+    ]
+
+
 def test_api_json_or_error_redacts_token_from_errors() -> None:
     helpers = _load_streamlit_helpers("_safe_error", "api_json_or_error")
 
