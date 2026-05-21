@@ -143,7 +143,7 @@ def test_settings_page_owns_connection_and_demo_controls() -> None:
     bot_monitor_source = _function_source("render_bot_monitor")
 
     assert "Backend API URL" in settings_source
-    assert "Execution token" in settings_source or "Execution API token" in settings_source
+    assert "Execution token" in settings_source
     assert "render_demo_test_short_form" in settings_source
     assert "Reconnect" in settings_source
     assert "Backend API URL" not in monitor_source
@@ -151,6 +151,7 @@ def test_settings_page_owns_connection_and_demo_controls() -> None:
     assert "Reconnect" not in monitor_source
     assert "render_demo_test_short_form" not in monitor_source
     assert "Backend API URL" not in bot_monitor_source
+    assert "Execution token" not in bot_monitor_source
     assert "Execution API token" not in bot_monitor_source
     assert "API token" not in bot_monitor_source
     assert "Reconnect" not in bot_monitor_source
