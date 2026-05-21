@@ -79,6 +79,8 @@ def validate_static_demo_order_request(
         or stop_loss_pct <= 0
     ):
         return _blocked("missing_take_profit_or_stop_loss")
+    if take_profit_pct >= 1 or stop_loss_pct >= 1:
+        return _blocked("invalid_take_profit_or_stop_loss_pct")
     if daily_test_order_count >= config.max_daily_test_orders:
         return _blocked("daily_test_order_limit_reached")
     return SafetyDecision(allowed=True, reason="allowed")

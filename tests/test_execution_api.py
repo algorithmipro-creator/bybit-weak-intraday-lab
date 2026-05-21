@@ -141,6 +141,37 @@ def test_place_test_short_rejects_unknown_symbol(monkeypatch, tmp_path):
     assert fake_client.place_calls == []
 
 
+def test_place_test_short_rejects_take_profit_pct_one_before_client_construction(monkeypatch, tmp_path):
+    fake_client = _patch_execution(monkeypatch, tmp_path)
+
+    response = client.post(
+        "/execution/demo/place-test-short",
+        json={"symbol": "ENAUSDT", "notional_usdt": 10, "take_profit_pct": 1, "stop_loss_pct": 0.07},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"]["reason"] == "invalid_take_profit_or_stop_loss_pct"
+    assert fake_client.client_factory_called["value"] is False
+    assert fake_client.place_calls == []
+    journal = read_journal(tmp_path / "execution_journal.csv")
+    assert journal.loc[0, "status"] == "rejected"
+    assert journal.loc[0, "reason"] == "invalid_take_profit_or_stop_loss_pct"
+
+
+def test_place_test_short_rejects_stop_loss_pct_one_before_client_construction(monkeypatch, tmp_path):
+    fake_client = _patch_execution(monkeypatch, tmp_path)
+
+    response = client.post(
+        "/execution/demo/place-test-short",
+        json={"symbol": "ENAUSDT", "notional_usdt": 10, "take_profit_pct": 0.06, "stop_loss_pct": 1},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"]["reason"] == "invalid_take_profit_or_stop_loss_pct"
+    assert fake_client.client_factory_called["value"] is False
+    assert fake_client.place_calls == []
+
+
 def test_wallet_rejects_non_demo_base_url_without_constructing_client(monkeypatch, tmp_path):
     fake_client = _patch_execution(monkeypatch, tmp_path, base_url="https://api.bybit.com")
 
