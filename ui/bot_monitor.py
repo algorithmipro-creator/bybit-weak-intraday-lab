@@ -165,9 +165,12 @@ def _job_updated_at(job: dict) -> datetime:
     if not value:
         return datetime.min.replace(tzinfo=timezone.utc)
     try:
-        return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
     except ValueError:
         return datetime.min.replace(tzinfo=timezone.utc)
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
 
 
 def _frame(value: Any) -> pd.DataFrame:

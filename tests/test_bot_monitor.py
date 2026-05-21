@@ -207,6 +207,15 @@ def test_select_latest_scanner_job_returns_none_for_non_iterable_input() -> None
     assert select_latest_scanner_job(123) is None
 
 
+def test_select_latest_scanner_job_handles_mixed_naive_and_invalid_timestamps() -> None:
+    jobs = [
+        {"job_id": "invalid", "job_type": "scan", "status": "done", "updated_at": "not-a-date"},
+        {"job_id": "naive", "job_type": "scan", "status": "done", "updated_at": "2026-05-21T12:00:00"},
+    ]
+
+    assert select_latest_scanner_job(jobs)["job_id"] == "naive"
+
+
 def test_build_scanner_watchlist_from_causal_signals() -> None:
     signals = pd.DataFrame(
         [
