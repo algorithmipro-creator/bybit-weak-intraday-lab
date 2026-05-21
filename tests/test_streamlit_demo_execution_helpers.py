@@ -65,6 +65,7 @@ def test_scanner_jobs_page_owns_scan_controls_and_jobs_table() -> None:
     assert "Start job" in scanner_source
     assert 'st.header("Jobs")' in scanner_source or "render_jobs_table" in scanner_source
     assert "Job type" in scanner_source
+    assert "show_results=True" in scanner_source
     assert "Start job" not in monitor_source
     assert 'st.header("Jobs")' not in monitor_source
 

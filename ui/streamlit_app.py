@@ -847,7 +847,7 @@ def render_scanner_jobs_page(api_url: str, auto_refresh: bool) -> None:
         except Exception as exc:
             st.error(f"Failed to start job: {exc}")
 
-    render_jobs_table(api_url, auto_refresh=auto_refresh, show_results=False)
+    render_jobs_table(api_url, auto_refresh=auto_refresh, show_results=True)
 
 
 def render_execution_history_page(api_url: str, execution_token: str) -> None:
