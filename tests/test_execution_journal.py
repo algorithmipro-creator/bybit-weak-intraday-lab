@@ -267,6 +267,16 @@ def test_read_journal_tail_missing_file_returns_empty_frame(tmp_path) -> None:
     assert list(frame.columns) == JOURNAL_COLUMNS
 
 
+def test_read_journal_tail_invalid_utf8_returns_empty_frame(tmp_path) -> None:
+    path = tmp_path / "execution_journal.csv"
+    path.write_bytes(b"\xff\xfe\x00not-valid-utf8")
+
+    frame = journal_module.read_journal_tail(path, 50)
+
+    assert frame.empty
+    assert list(frame.columns) == JOURNAL_COLUMNS
+
+
 def test_read_journal_tail_preserves_quoted_newlines_in_newest_record(tmp_path) -> None:
     path = tmp_path / "execution_journal.csv"
     append_journal_event(

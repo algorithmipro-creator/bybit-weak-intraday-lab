@@ -86,7 +86,7 @@ def read_journal_tail(path: str | Path, limit: int) -> pd.DataFrame:
     try:
         with journal_path.open("r", encoding="utf-8-sig", newline="") as handle:
             rows = deque(csv.DictReader(handle), maxlen=clamped_limit)
-    except (csv.Error, OSError, pd.errors.EmptyDataError):
+    except (csv.Error, OSError, UnicodeDecodeError, pd.errors.EmptyDataError):
         return _empty_journal_frame()
     if not rows:
         return _empty_journal_frame()
