@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import json
+
 import pytest
 from fastapi.testclient import TestClient
 
 from backend.app import main
+from backend.app import job_store
 from backend.app.job_store import job_dir
 
 
@@ -84,6 +87,39 @@ def test_invalid_job_id_path_is_rejected():
 def test_job_dir_rejects_path_traversal():
     with pytest.raises(ValueError):
         job_dir("../outside")
+
+
+def test_recover_interrupted_jobs_marks_stale_active_jobs_as_error(monkeypatch, tmp_path):
+    monkeypatch.setattr(job_store.settings, "jobs_dir", tmp_path)
+    running_dir = tmp_path / "111111111111"
+    queued_dir = tmp_path / "222222222222"
+    done_dir = tmp_path / "333333333333"
+    for directory in (running_dir, queued_dir, done_dir):
+        directory.mkdir(parents=True)
+    (running_dir / "meta.json").write_text(
+        json.dumps({"job_id": "111111111111", "status": "running", "message": "scan running"}),
+        encoding="utf-8",
+    )
+    (queued_dir / "meta.json").write_text(
+        json.dumps({"job_id": "222222222222", "status": "queued", "message": "queued"}),
+        encoding="utf-8",
+    )
+    (done_dir / "meta.json").write_text(
+        json.dumps({"job_id": "333333333333", "status": "done", "message": "scan complete"}),
+        encoding="utf-8",
+    )
+
+    recovered = job_store.recover_interrupted_jobs()
+
+    assert recovered == 2
+    running_meta = json.loads((running_dir / "meta.json").read_text(encoding="utf-8"))
+    queued_meta = json.loads((queued_dir / "meta.json").read_text(encoding="utf-8"))
+    done_meta = json.loads((done_dir / "meta.json").read_text(encoding="utf-8"))
+    assert running_meta["status"] == "error"
+    assert queued_meta["status"] == "error"
+    assert running_meta["message"] == "job interrupted by backend restart"
+    assert queued_meta["message"] == "job interrupted by backend restart"
+    assert done_meta["status"] == "done"
 
 
 def test_valid_scan_queues_normalized_symbols(prevent_real_scan_jobs):

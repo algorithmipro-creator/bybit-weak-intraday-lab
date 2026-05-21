@@ -57,13 +57,13 @@ def test_best_grid_result_ignores_empty_or_nan_rows():
 
 
 def test_backend_defaults_to_one_worker_to_avoid_cache_write_conflicts():
-    settings = Settings()
+    settings = Settings(_env_file=None)
 
     assert settings.max_workers == 1
 
 
 def test_backend_defaults_use_relative_data_paths_for_local_test_imports():
-    settings = Settings()
+    settings = Settings(_env_file=None)
 
     assert settings.data_dir == Path("data")
     assert settings.cache_dir == Path("data/bybit_archive_cache")

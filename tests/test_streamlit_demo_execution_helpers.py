@@ -22,6 +22,12 @@ def _load_streamlit_helpers(*names: str) -> dict:
     return namespace
 
 
+def test_demo_execution_section_renders_before_jobs_table() -> None:
+    source = Path("ui/streamlit_app.py").read_text(encoding="utf-8")
+
+    assert source.index("render_demo_execution(api_url, execution_token)") < source.index('st.header("Jobs")')
+
+
 class FakeResponse:
     def __init__(self, payload=None):
         self.payload = payload or {}

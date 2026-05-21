@@ -106,6 +106,7 @@ def test_execution_status_works_without_keys(monkeypatch, tmp_path):
     )
     monkeypatch.setattr(execution_routes, "execution_config_from_settings", lambda: config)
     monkeypatch.setattr(execution_routes, "journal_path_from_settings", lambda: tmp_path / "execution_journal.csv")
+    monkeypatch.setattr(execution_routes.settings, "execution_api_token", "")
 
     response = client.get("/execution/demo/status")
 

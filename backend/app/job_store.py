@@ -20,6 +20,7 @@ from .settings import settings
 _LOCK = Lock()
 JOB_ID_PATTERN = r"^[a-f0-9]{12}$"
 _JOB_ID_RE = re.compile(JOB_ID_PATTERN)
+ACTIVE_JOB_STATUSES = {"queued", "running"}
 
 
 def now_iso() -> str:
@@ -62,6 +63,29 @@ def list_jobs() -> list[dict[str, Any]]:
         except Exception:
             continue
     return jobs
+
+
+def recover_interrupted_jobs() -> int:
+    recovered = 0
+    with _LOCK:
+        for p in settings.jobs_dir.glob("*/meta.json"):
+            try:
+                meta = json.loads(p.read_text())
+            except Exception:
+                continue
+            status = str(meta.get("status") or "").strip().lower()
+            if status not in ACTIVE_JOB_STATUSES:
+                continue
+            meta.update(
+                {
+                    "status": "error",
+                    "updated_at": now_iso(),
+                    "message": "job interrupted by backend restart",
+                }
+            )
+            p.write_text(json.dumps(meta, indent=2, ensure_ascii=False))
+            recovered += 1
+    return recovered
 
 
 def create_job(payload: dict[str, Any], job_type: str = "scan") -> str:

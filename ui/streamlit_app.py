@@ -414,6 +414,9 @@ if run:
     except Exception as exc:
         st.error(f"Failed to start job: {exc}")
 
+st.divider()
+render_demo_execution(api_url, execution_token)
+
 st.header("Jobs")
 try:
     jobs = api_get("/jobs", api_url).json()
@@ -637,6 +640,3 @@ if selected_job:
                         )
                 else:
                     st.info("No candidate trades in this job.")
-
-st.divider()
-render_demo_execution(api_url, execution_token)

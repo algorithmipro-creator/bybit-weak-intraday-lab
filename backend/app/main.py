@@ -9,13 +9,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
 from .execution_routes import router as execution_router
-from .job_store import JOB_ID_PATTERN, create_job, job_dir, list_jobs, load_meta, run_job
+from .job_store import JOB_ID_PATTERN, create_job, job_dir, list_jobs, load_meta, recover_interrupted_jobs, run_job
 from .schemas import JobResponse, OptimizeRequest, ScanRequest
 from .settings import settings
 
 app = FastAPI(title=settings.project_name)
 executor = ThreadPoolExecutor(max_workers=settings.max_workers)
 JobId = Annotated[str, Path(pattern=JOB_ID_PATTERN)]
+recover_interrupted_jobs()
 
 app.add_middleware(
     CORSMiddleware,
