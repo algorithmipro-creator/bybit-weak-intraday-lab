@@ -46,7 +46,7 @@ def read_journal(path: str | Path) -> pd.DataFrame:
     return pd.read_csv(journal_path)
 
 
-def count_daily_test_orders(path: str | Path, *, day: date) -> int:
+def count_daily_test_orders(path: str | Path, day: date) -> int:
     frame = read_journal(path)
     if frame.empty or "created_at_utc" not in frame.columns or "status" not in frame.columns:
         return 0
