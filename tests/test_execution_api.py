@@ -274,6 +274,38 @@ def test_journal_clamps_limit_and_does_not_expose_secrets(monkeypatch, tmp_path)
     assert "secret" not in str(too_large.json())
 
 
+def test_journal_redacts_configured_secrets_from_canonical_fields(monkeypatch, tmp_path):
+    _patch_execution(
+        monkeypatch,
+        tmp_path,
+        api_key="demo-key",
+        api_secret="demo-secret",
+        execution_api_token=EXECUTION_TOKEN,
+    )
+    journal_path = tmp_path / "execution_journal.csv"
+    append_journal_event(
+        journal_path,
+        {
+            "created_at_utc": "2026-05-21T10:00:00+00:00",
+            "event_id": "event-1",
+            "mode": "demo",
+            "status": "error",
+            "reason": "demo-secret",
+            "bybit_ret_msg": f"bad {EXECUTION_TOKEN} demo-key demo-secret",
+            "raw_response_path": f"C:/tmp/{EXECUTION_TOKEN}.json",
+        },
+    )
+
+    response = client.get("/execution/demo/journal", headers=_auth_headers())
+
+    assert response.status_code == 200
+    body_text = str(response.json())
+    assert EXECUTION_TOKEN not in body_text
+    assert "demo-key" not in body_text
+    assert "demo-secret" not in body_text
+    assert "[redacted]" in body_text
+
+
 def test_wallet_rejects_when_token_not_configured_before_client_construction(monkeypatch, tmp_path):
     fake_client = _patch_execution(monkeypatch, tmp_path, execution_api_token="")
 

@@ -265,3 +265,21 @@ def test_read_journal_tail_missing_file_returns_empty_frame(tmp_path) -> None:
 
     assert frame.empty
     assert list(frame.columns) == JOURNAL_COLUMNS
+
+
+def test_read_journal_tail_preserves_quoted_newlines_in_newest_record(tmp_path) -> None:
+    path = tmp_path / "execution_journal.csv"
+    append_journal_event(
+        path,
+        {"created_at_utc": "2026-05-21T10:00:00+00:00", "event_id": "event-1", "bybit_ret_msg": "plain"},
+    )
+    append_journal_event(
+        path,
+        {"created_at_utc": "2026-05-21T10:01:00+00:00", "event_id": "event-2", "bybit_ret_msg": "line1\nline2"},
+    )
+
+    frame = journal_module.read_journal_tail(path, 1)
+
+    assert len(frame) == 1
+    assert frame.loc[0, "event_id"] == "event-2"
+    assert frame.loc[0, "bybit_ret_msg"] == "line1\nline2"

@@ -140,6 +140,24 @@ def _decimal_to_str(value: Decimal) -> str:
     return format(value, "f")
 
 
+def _redact_journal_rows(rows: list[dict], secrets_to_redact: set[str]) -> list[dict]:
+    if not secrets_to_redact:
+        return rows
+    redacted_rows = []
+    for row in rows:
+        redacted_row = {}
+        for key, value in row.items():
+            if isinstance(value, str):
+                redacted_value = value
+                for secret in secrets_to_redact:
+                    redacted_value = redacted_value.replace(secret, "[redacted]")
+                redacted_row[key] = redacted_value
+            else:
+                redacted_row[key] = value
+        redacted_rows.append(redacted_row)
+    return redacted_rows
+
+
 @router.get("/status")
 def execution_status() -> dict:
     config = execution_config_from_settings()
@@ -216,6 +234,12 @@ def demo_journal(
     clamped_limit = max(1, min(int(limit), 500))
     journal = read_journal_tail(journal_path_from_settings(), clamped_limit)
     rows = [] if journal.empty else journal.fillna("").to_dict(orient="records")
+    secrets_to_redact = {
+        secret
+        for secret in (config.api_key.strip(), config.api_secret.strip(), settings.execution_api_token.strip())
+        if secret
+    }
+    rows = _redact_journal_rows(rows, secrets_to_redact)
     return {"rows": rows, "limit": clamped_limit, "count": len(rows)}
 
 
