@@ -994,9 +994,42 @@ def render_execution_history_page(api_url: str, execution_token: str) -> None:
     st.dataframe(journal_frame[history_columns], use_container_width=True, hide_index=True)
 
 
-def render_settings_page(default_api_url: str) -> None:
+def render_settings_page(api_url: str, execution_token: str) -> None:
     st.header("Settings")
-    st.info(f"Default backend: {default_api_url}")
+    st.caption("Connection settings are session-local and are not written to disk.")
+
+    new_api_url = st.text_input("Backend API URL", value=api_url.rstrip("/")).strip().rstrip("/")
+    new_execution_token = st.text_input(
+        "Execution token",
+        value="",
+        type="password",
+        help="Leave blank to keep the current session token.",
+    ).strip()
+
+    if st.button("Reconnect", type="primary"):
+        token_to_use = new_execution_token or execution_token.strip()
+        ok, message = validate_connection(new_api_url, token_to_use)
+        if ok:
+            mark_connected(st.session_state, api_url=new_api_url, execution_token=token_to_use)
+            st.success(message)
+            st.rerun()
+        else:
+            st.error(message)
+
+    status_payload, status_error = api_json_or_error("/execution/demo/status", api_url)
+    status_for_display = status_payload if isinstance(status_payload, dict) else {}
+    if status_error:
+        st.warning(f"Execution demo status unavailable: {status_error}")
+    else:
+        safe_status = {
+            key: status_for_display.get(key)
+            for key in ["mode", "enabled", "configured", "limits", "api_token_configured"]
+            if key in status_for_display
+        }
+        st.json(safe_status)
+
+    with st.expander("Controlled demo test short", expanded=False):
+        render_demo_test_short_form(api_url, execution_token, status_for_display)
 
 
 ensure_navigation_state(st.session_state, default_api_url=DEFAULT_API)
@@ -1027,6 +1060,6 @@ elif page == "Scanner Jobs":
 elif page == "Execution History":
     render_execution_history_page(api_url, execution_token)
 elif page == "Settings":
-    render_settings_page(DEFAULT_API)
+    render_settings_page(api_url, execution_token)
 
 st.stop()
