@@ -87,6 +87,32 @@ def test_scanner_jobs_page_owns_auto_refresh_toggle() -> None:
     assert "auto_refresh=active_jobs_auto_refresh" in scanner_source
 
 
+def test_reports_page_owns_job_result_details() -> None:
+    reports_source = _function_source("render_reports_page")
+    monitor_source = _function_source("render_monitor_page")
+
+    assert "render_jobs_table" in reports_source
+    assert "show_results=True" in reports_source
+    assert "render_selected_job_results" not in monitor_source
+
+
+def test_execution_history_page_owns_journal_table() -> None:
+    history_source = _function_source("render_execution_history_page")
+    monitor_source = _function_source("render_bot_monitor")
+
+    assert "/execution/demo/journal?limit=100" in history_source
+    assert "Execution History" in history_source
+    assert "/execution/demo/journal?limit=25" not in monitor_source
+
+
+def test_execution_token_messages_do_not_reference_sidebar() -> None:
+    monitor_source = _function_source("render_bot_monitor")
+    form_source = _function_source("render_demo_test_short_form")
+
+    assert "sidebar" not in monitor_source
+    assert "sidebar" not in form_source
+
+
 def test_connection_screen_owns_connection_inputs() -> None:
     connection_source = _function_source("render_connection_screen")
 

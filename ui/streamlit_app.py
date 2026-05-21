@@ -519,7 +519,7 @@ def render_demo_test_short_form(api_url: str, execution_token: str, status_paylo
 
     if submit:
         if not execution_token:
-            st.error("Enter the execution API token in the sidebar before placing a demo test short.")
+            st.error("Connect with an execution API token before placing a demo test short.")
             return
 
         payload = {
@@ -553,19 +553,18 @@ def render_bot_monitor(api_url: str, execution_token: str) -> None:
     if health_error:
         st.warning(f"Backend health unavailable: {health_error}")
 
-    wallet_payload = positions_payload = orders_payload = journal_payload = None
-    wallet_error = positions_error = orders_error = journal_error = None
+    wallet_payload = positions_payload = orders_payload = None
+    wallet_error = positions_error = orders_error = None
     positions_rows: list[dict] = []
     orders_rows: list[dict] = []
     wallet_summary = summarize_wallet(None)
 
     if not execution_token:
-        st.info("Enter the execution API token in the sidebar to load demo account data and order controls.")
+        st.info("Connect with an execution API token to load demo account data and order controls.")
     else:
         wallet_payload, wallet_error = api_json_or_error("/execution/demo/wallet", api_url, token=execution_token)
         positions_payload, positions_error = api_json_or_error("/execution/demo/positions", api_url, token=execution_token)
         orders_payload, orders_error = api_json_or_error("/execution/demo/open-orders", api_url, token=execution_token)
-        journal_payload, journal_error = api_json_or_error("/execution/demo/journal?limit=25", api_url, token=execution_token)
 
         if wallet_error:
             st.warning(f"Wallet unavailable: {wallet_error}")
@@ -582,13 +581,8 @@ def render_bot_monitor(api_url: str, execution_token: str) -> None:
         else:
             positions_rows = normalize_positions(positions_payload, orders_payload if not orders_error else None)
 
-        if journal_error:
-            st.warning(f"Execution history unavailable: {journal_error}")
-
     positions_frame = _frame_from_rows(positions_rows)
     orders_frame = _frame_from_rows(orders_rows)
-    journal_rows = _journal_rows(journal_payload)
-    journal_frame = _frame_from_rows(journal_rows)
 
     _render_variant_a_visual_overview(
         health_error=health_error,
@@ -601,7 +595,7 @@ def render_bot_monitor(api_url: str, execution_token: str) -> None:
         scanner_watchlist=scanner_watchlist,
     )
     if not execution_token:
-        st.info("Enter the execution API token in the sidebar to load demo account data and order controls.")
+        st.info("Connect with an execution API token to load demo account data and order controls.")
     _render_monitor_visual_charts(positions_frame, scanner_watchlist)
 
     main_left, main_right = st.columns(2)
@@ -620,40 +614,13 @@ def render_bot_monitor(api_url: str, execution_token: str) -> None:
         else:
             st.dataframe(scanner_watchlist, use_container_width=True, hide_index=True)
 
-    secondary_left, secondary_right = st.columns(2)
-    with secondary_left:
-        st.subheader("Open Orders")
-        if orders_error:
-            st.info("Open orders are unavailable.")
-        elif orders_frame.empty:
-            st.info("No open orders.")
-        else:
-            st.dataframe(orders_frame, use_container_width=True, hide_index=True)
-    with secondary_right:
-        st.subheader("Execution History")
-        if journal_error:
-            st.info("Execution history is unavailable.")
-        elif journal_frame.empty:
-            st.info("No execution history rows.")
-        else:
-            history_columns = [
-                column
-                for column in [
-                    "created_at_utc",
-                    "symbol",
-                    "side",
-                    "requested_notional_usdt",
-                    "qty",
-                    "take_profit",
-                    "stop_loss",
-                    "status",
-                    "reason",
-                    "bybit_ret_code",
-                    "bybit_ret_msg",
-                ]
-                if column in journal_frame.columns
-            ]
-            st.dataframe(journal_frame[history_columns], use_container_width=True, hide_index=True)
+    st.subheader("Open Orders")
+    if orders_error:
+        st.info("Open orders are unavailable.")
+    elif orders_frame.empty:
+        st.info("No open orders.")
+    else:
+        st.dataframe(orders_frame, use_container_width=True, hide_index=True)
 
     with st.expander("Controlled demo test short", expanded=False):
         render_demo_test_short_form(api_url, execution_token, status_payload)
@@ -678,9 +645,10 @@ def render_monitor_page(api_url: str, execution_token: str, auto_refresh: bool) 
     render_bot_monitor(api_url, execution_token)
 
 
-def render_reports_page(api_url: str) -> None:
+def render_reports_page(api_url: str, auto_refresh: bool) -> None:
     st.header("Reports")
-    st.info("Reports move here in the next navigation task.")
+    st.caption("Backtest summaries, optimizer results and historical result charts.")
+    render_jobs_table(api_url, auto_refresh=auto_refresh, show_results=True)
 
 
 def render_selected_job_results(api_url: str, selected_job: str, *, auto_refresh: bool) -> None:
@@ -1016,7 +984,42 @@ def render_scanner_jobs_page(api_url: str, auto_refresh: bool) -> None:
 
 def render_execution_history_page(api_url: str, execution_token: str) -> None:
     st.header("Execution History")
-    st.info("Execution history moves here in the next navigation task.")
+    if not execution_token.strip():
+        st.info("Reconnect with an execution API token to view the execution journal.")
+        return
+
+    journal_payload, journal_error = api_json_or_error(
+        "/execution/demo/journal?limit=100",
+        api_url,
+        token=execution_token,
+    )
+    if journal_error:
+        st.warning(f"Execution history unavailable: {journal_error}")
+        return
+
+    journal_frame = _frame_from_rows(_journal_rows(journal_payload))
+    if journal_frame.empty:
+        st.info("No execution history rows.")
+        return
+
+    history_columns = [
+        column
+        for column in [
+            "created_at_utc",
+            "symbol",
+            "side",
+            "requested_notional_usdt",
+            "qty",
+            "take_profit",
+            "stop_loss",
+            "status",
+            "reason",
+            "bybit_ret_code",
+            "bybit_ret_msg",
+        ]
+        if column in journal_frame.columns
+    ]
+    st.dataframe(journal_frame[history_columns], use_container_width=True, hide_index=True)
 
 
 def render_settings_page(default_api_url: str) -> None:
@@ -1046,7 +1049,7 @@ with action_col:
 if page == "Monitor":
     render_monitor_page(api_url, execution_token, auto_refresh)
 elif page == "Reports":
-    render_reports_page(api_url)
+    render_reports_page(api_url, auto_refresh)
 elif page == "Scanner Jobs":
     render_scanner_jobs_page(api_url, auto_refresh)
 elif page == "Execution History":
