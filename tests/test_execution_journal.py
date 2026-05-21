@@ -84,6 +84,23 @@ def test_count_daily_test_orders_ignores_malformed_timestamps(tmp_path) -> None:
     assert count_daily_test_orders(path, date(2026, 5, 21)) == 1
 
 
+def test_read_journal_empty_existing_file_returns_empty_frame_with_columns(tmp_path) -> None:
+    path = tmp_path / "execution_journal.csv"
+    path.touch()
+
+    frame = read_journal(path)
+
+    assert frame.empty
+    assert list(frame.columns) == JOURNAL_COLUMNS
+
+
+def test_count_daily_test_orders_empty_existing_file_returns_zero(tmp_path) -> None:
+    path = tmp_path / "execution_journal.csv"
+    path.touch()
+
+    assert count_daily_test_orders(path, date(2026, 5, 21)) == 0
+
+
 def test_read_journal_missing_file_returns_empty_frame(tmp_path) -> None:
     frame = read_journal(tmp_path / "missing.csv")
 

@@ -44,7 +44,12 @@ def read_journal(path: str | Path) -> pd.DataFrame:
     journal_path = Path(path)
     if not journal_path.exists():
         return pd.DataFrame(columns=JOURNAL_COLUMNS)
-    return pd.read_csv(journal_path)
+    if journal_path.stat().st_size == 0:
+        return pd.DataFrame(columns=JOURNAL_COLUMNS)
+    try:
+        return pd.read_csv(journal_path)
+    except pd.errors.EmptyDataError:
+        return pd.DataFrame(columns=JOURNAL_COLUMNS)
 
 
 def count_daily_test_orders(path: str | Path, day: date) -> int:
