@@ -212,3 +212,83 @@ def test_build_scanner_watchlist_from_causal_signals() -> None:
     assert watchlist.loc[0, "symbol"] == "JTOUSDT"
     assert watchlist.loc[0, "status"] == "waiting"
     assert watchlist.loc[0, "outcome"] == "tp"
+
+
+def test_build_scanner_watchlist_matches_causal_evaluations_by_signal_time() -> None:
+    signals = pd.DataFrame(
+        [
+            {
+                "date": "2026-03-18",
+                "symbol": "JTOUSDT",
+                "mode": "pump",
+                "score": 9,
+                "signal_time_utc": "2026-03-18T10:00:00+00:00",
+                "signal_price": 2.5,
+                "turnover_so_far_usdt": 1_500_000,
+            },
+            {
+                "date": "2026-03-18",
+                "symbol": "JTOUSDT",
+                "mode": "pump",
+                "score": 10,
+                "signal_time_utc": "2026-03-18T11:00:00+00:00",
+                "signal_price": 2.7,
+                "turnover_so_far_usdt": 1_800_000,
+            },
+        ]
+    )
+    evaluations = pd.DataFrame(
+        [
+            {
+                "date": "2026-03-18",
+                "symbol": "JTOUSDT",
+                "signal_time_utc": "2026-03-18T10:00:00+00:00",
+                "outcome": "sl",
+                "pnl_underlying_pct": -0.07,
+            },
+            {
+                "date": "2026-03-18",
+                "symbol": "JTOUSDT",
+                "signal_time_utc": "2026-03-18T11:00:00+00:00",
+                "outcome": "tp",
+                "pnl_underlying_pct": 0.08,
+            },
+        ]
+    )
+
+    watchlist = build_scanner_watchlist("causal_scan", signals=signals, evaluations=evaluations)
+
+    assert list(watchlist["outcome"]) == ["sl", "tp"]
+    assert list(watchlist["pnl_underlying_pct"]) == [-0.07, 0.08]
+
+
+def test_select_latest_scanner_job_treats_missing_or_empty_job_type_as_regular_scan() -> None:
+    jobs = [
+        {"job_id": "legacy-old", "status": "done", "updated_at": "2026-05-21T09:00:00+00:00"},
+        {"job_id": "legacy-new", "job_type": "", "status": "done", "updated_at": "2026-05-21T12:00:00+00:00"},
+    ]
+
+    assert select_latest_scanner_job(jobs)["job_id"] == "legacy-new"
+
+
+def test_build_scanner_watchlist_from_regular_scan_marks_candidates() -> None:
+    trades = pd.DataFrame(
+        [
+            {
+                "symbol": "ENAUSDT",
+                "mode": "weak",
+                "candidate_score": 9,
+                "entry_time_utc": "2026-03-18T10:00:00+00:00",
+                "entry_price": 0.1,
+                "turnover_usdt": 1_200_000,
+                "outcome": "tp",
+                "pnl_underlying_pct": 0.06,
+            }
+        ]
+    )
+
+    watchlist = build_scanner_watchlist("scan", trades=trades)
+
+    assert watchlist.loc[0, "status"] == "candidate"
+    assert watchlist.loc[0, "score"] == 9
+    assert watchlist.loc[0, "time_utc"] == "2026-03-18T10:00:00+00:00"

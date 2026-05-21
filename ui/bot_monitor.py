@@ -105,7 +105,7 @@ def normalize_open_orders(payload: dict | None) -> list[dict]:
 def select_latest_scanner_job(jobs: list[dict]) -> dict | None:
     done_jobs = [job for job in jobs if job.get("status") == "done"]
     causal = [job for job in done_jobs if job.get("job_type") == "causal_scan"]
-    regular = [job for job in done_jobs if job.get("job_type") == "scan"]
+    regular = [job for job in done_jobs if job.get("job_type") in (None, "", "scan")]
     if causal:
         return max(causal, key=_job_updated_at)
     if regular:
@@ -171,6 +171,13 @@ def _causal_watchlist(signals: Any, evaluations: Any) -> pd.DataFrame:
     df = _frame(signals)
     if df.empty:
         return pd.DataFrame(columns=WATCHLIST_COLUMNS)
+
+    evals = _frame(evaluations)
+    if not evals.empty and "symbol" in df.columns and "symbol" in evals.columns:
+        keys = _causal_evaluation_merge_keys(df, evals)
+        keep = keys + [column for column in ["outcome", "pnl_underlying_pct"] if column in evals.columns]
+        df = df.merge(evals[keep].drop_duplicates(keys, keep="last"), on=keys, how="left")
+
     df = df.rename(
         columns={
             "signal_time_utc": "time_utc",
@@ -179,11 +186,6 @@ def _causal_watchlist(signals: Any, evaluations: Any) -> pd.DataFrame:
         }
     )
     df["status"] = "waiting"
-
-    evals = _frame(evaluations)
-    if not evals.empty and "symbol" in evals.columns:
-        keep = [column for column in ["symbol", "outcome", "pnl_underlying_pct"] if column in evals.columns]
-        df = df.merge(evals[keep].drop_duplicates("symbol", keep="last"), on="symbol", how="left")
 
     return _with_watchlist_columns(df)
 
@@ -200,7 +202,7 @@ def _regular_watchlist(trades: Any) -> pd.DataFrame:
         }
     )
     if "status" not in df.columns:
-        df["status"] = "waiting"
+        df["status"] = "candidate"
     return _with_watchlist_columns(df)
 
 
@@ -210,3 +212,10 @@ def _with_watchlist_columns(df: pd.DataFrame) -> pd.DataFrame:
         if column not in out.columns:
             out[column] = pd.NA
     return out[WATCHLIST_COLUMNS]
+
+
+def _causal_evaluation_merge_keys(signals: pd.DataFrame, evaluations: pd.DataFrame) -> list[str]:
+    signal_keys = ["date", "symbol", "signal_time_utc"]
+    if all(key in signals.columns and key in evaluations.columns for key in signal_keys):
+        return signal_keys
+    return ["symbol"]
