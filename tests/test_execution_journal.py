@@ -231,6 +231,45 @@ def test_read_journal_missing_file_returns_empty_frame(tmp_path) -> None:
     assert list(frame.columns) == JOURNAL_COLUMNS
 
 
+def test_read_journal_invalid_utf8_returns_empty_frame(tmp_path) -> None:
+    path = tmp_path / "execution_journal.csv"
+    path.write_bytes(b"\xff\xfe\x00not-valid-utf8")
+
+    frame = read_journal(path)
+
+    assert frame.empty
+    assert list(frame.columns) == JOURNAL_COLUMNS
+
+
+def test_read_journal_malformed_unterminated_quoted_csv_returns_empty_frame(tmp_path) -> None:
+    path = tmp_path / "execution_journal.csv"
+    path.write_text(
+        'created_at_utc,event_id,status,mode\n'
+        '2026-05-21T10:00:00+00:00,event-1,"accepted,demo\n',
+        encoding="utf-8",
+    )
+
+    frame = read_journal(path)
+
+    assert frame.empty
+    assert list(frame.columns) == JOURNAL_COLUMNS
+
+
+def test_read_journal_oserror_returns_empty_frame(monkeypatch, tmp_path) -> None:
+    path = tmp_path / "execution_journal.csv"
+    path.write_text("created_at_utc,event_id,status,mode\n", encoding="utf-8")
+
+    def raise_oserror(*args, **kwargs):
+        raise OSError("local journal unavailable")
+
+    monkeypatch.setattr(journal_module.pd, "read_csv", raise_oserror)
+
+    frame = read_journal(path)
+
+    assert frame.empty
+    assert list(frame.columns) == JOURNAL_COLUMNS
+
+
 def test_read_journal_tail_returns_newest_rows_first_and_drops_extra_columns(tmp_path) -> None:
     path = tmp_path / "execution_journal.csv"
     path.write_text(

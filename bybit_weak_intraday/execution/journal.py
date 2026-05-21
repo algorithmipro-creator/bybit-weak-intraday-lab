@@ -64,13 +64,13 @@ def append_journal_event(path: str | Path, event: dict[str, Any]) -> None:
 
 def read_journal(path: str | Path) -> pd.DataFrame:
     journal_path = Path(path)
-    if not journal_path.exists():
-        return _empty_journal_frame()
-    if journal_path.stat().st_size == 0:
-        return _empty_journal_frame()
     try:
+        if not journal_path.exists():
+            return _empty_journal_frame()
+        if journal_path.stat().st_size == 0:
+            return _empty_journal_frame()
         frame = pd.read_csv(journal_path)
-    except pd.errors.EmptyDataError:
+    except (OSError, UnicodeDecodeError, pd.errors.EmptyDataError, pd.errors.ParserError):
         return _empty_journal_frame()
     return frame.reindex(columns=JOURNAL_COLUMNS)
 
