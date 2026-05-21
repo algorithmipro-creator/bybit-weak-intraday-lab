@@ -8,6 +8,7 @@ from fastapi import FastAPI, HTTPException, Path
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
+from .execution_routes import router as execution_router
 from .job_store import JOB_ID_PATTERN, create_job, job_dir, list_jobs, load_meta, run_job
 from .schemas import JobResponse, OptimizeRequest, ScanRequest
 from .settings import settings
@@ -23,6 +24,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.include_router(execution_router)
 
 
 @app.get("/health")
