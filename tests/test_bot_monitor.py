@@ -177,13 +177,13 @@ def test_normalize_open_orders_handles_non_finite_timestamp() -> None:
     assert rows[0]["created_time"] is None
 
 
-def test_select_latest_scanner_job_prefers_latest_causal_scan() -> None:
+def test_select_latest_scanner_job_selects_newest_supported_scan_type() -> None:
     jobs = [
         {"job_id": "scan-new", "job_type": "scan", "status": "done", "updated_at": "2026-05-21T12:00:00+00:00"},
         {"job_id": "causal-old", "job_type": "causal_scan", "status": "done", "updated_at": "2026-05-21T10:00:00+00:00"},
     ]
 
-    assert select_latest_scanner_job(jobs)["job_id"] == "causal-old"
+    assert select_latest_scanner_job(jobs)["job_id"] == "scan-new"
 
 
 def test_select_latest_scanner_job_falls_back_to_regular_scan() -> None:

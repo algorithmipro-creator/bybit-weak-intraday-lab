@@ -111,13 +111,15 @@ def normalize_open_orders(payload: dict | None) -> list[dict]:
 def select_latest_scanner_job(jobs: list[dict] | None) -> dict | None:
     if not isinstance(jobs, (list, tuple)):
         return None
-    done_jobs = [job for job in jobs if isinstance(job, dict) and job.get("status") == "done"]
-    causal = [job for job in done_jobs if job.get("job_type") == "causal_scan"]
-    regular = [job for job in done_jobs if job.get("job_type") in (None, "", "scan")]
-    if causal:
-        return max(causal, key=_job_updated_at)
-    if regular:
-        return max(regular, key=_job_updated_at)
+    scanner_jobs = [
+        job
+        for job in jobs
+        if isinstance(job, dict)
+        and job.get("status") == "done"
+        and job.get("job_type") in ("causal_scan", "scan", "", None)
+    ]
+    if scanner_jobs:
+        return max(scanner_jobs, key=_job_updated_at)
     return None
 
 
