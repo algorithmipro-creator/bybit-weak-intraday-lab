@@ -203,6 +203,10 @@ def test_select_latest_scanner_job_handles_malformed_input() -> None:
     )["job_id"] == "scan"
 
 
+def test_select_latest_scanner_job_returns_none_for_non_iterable_input() -> None:
+    assert select_latest_scanner_job(123) is None
+
+
 def test_build_scanner_watchlist_from_causal_signals() -> None:
     signals = pd.DataFrame(
         [
@@ -287,6 +291,34 @@ def test_build_scanner_watchlist_matches_causal_evaluations_by_signal_time() -> 
 def test_build_scanner_watchlist_handles_malformed_inputs() -> None:
     assert build_scanner_watchlist("causal_scan", signals="bad").empty
     assert build_scanner_watchlist("scan", trades=object()).empty
+
+
+def test_build_scanner_watchlist_rejects_scalar_row_collections() -> None:
+    assert build_scanner_watchlist("causal_scan", signals=[1, 2]).empty
+    assert build_scanner_watchlist("scan", trades=[1, 2]).empty
+
+
+def test_build_scanner_watchlist_sanitizes_non_finite_numeric_fields() -> None:
+    trades = pd.DataFrame(
+        [
+            {
+                "symbol": "ENAUSDT",
+                "mode": "weak",
+                "candidate_score": "NaN",
+                "entry_time_utc": "2026-03-18T10:00:00+00:00",
+                "entry_price": "inf",
+                "turnover_usdt": "NaN",
+                "pnl_underlying_pct": "inf",
+            }
+        ]
+    )
+
+    watchlist = build_scanner_watchlist("scan", trades=trades)
+
+    assert pd.isna(watchlist.loc[0, "score"])
+    assert pd.isna(watchlist.loc[0, "price"])
+    assert pd.isna(watchlist.loc[0, "turnover_usdt"])
+    assert pd.isna(watchlist.loc[0, "pnl_underlying_pct"])
 
 
 def test_select_latest_scanner_job_treats_missing_or_empty_job_type_as_regular_scan() -> None:

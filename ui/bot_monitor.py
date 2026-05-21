@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+from collections.abc import Mapping
 from datetime import datetime, timezone
 from typing import Any
 
@@ -25,10 +26,13 @@ WATCHLIST_COLUMNS = [
     "outcome",
     "pnl_underlying_pct",
 ]
+WATCHLIST_NUMERIC_COLUMNS = ["score", "price", "turnover_usdt", "pnl_underlying_pct"]
 
 
 def safe_float(value: Any) -> float | None:
-    if value is None or value == "":
+    if value is None:
+        return None
+    if isinstance(value, str) and value == "":
         return None
     try:
         parsed = float(value)
@@ -105,7 +109,7 @@ def normalize_open_orders(payload: dict | None) -> list[dict]:
 
 
 def select_latest_scanner_job(jobs: list[dict] | None) -> dict | None:
-    if jobs is None:
+    if not isinstance(jobs, (list, tuple)):
         return None
     done_jobs = [job for job in jobs if isinstance(job, dict) and job.get("status") == "done"]
     causal = [job for job in done_jobs if job.get("job_type") == "causal_scan"]
@@ -171,6 +175,8 @@ def _frame(value: Any) -> pd.DataFrame:
         return pd.DataFrame()
     if isinstance(value, pd.DataFrame):
         return value.copy()
+    if isinstance(value, (list, tuple)) and not all(isinstance(row, Mapping) for row in value):
+        return pd.DataFrame()
     try:
         return pd.DataFrame(value)
     except (TypeError, ValueError):
@@ -220,6 +226,8 @@ def _with_watchlist_columns(df: pd.DataFrame) -> pd.DataFrame:
     for column in WATCHLIST_COLUMNS:
         if column not in out.columns:
             out[column] = pd.NA
+    for column in WATCHLIST_NUMERIC_COLUMNS:
+        out[column] = out[column].map(_watchlist_number)
     return out[WATCHLIST_COLUMNS]
 
 
@@ -228,3 +236,8 @@ def _causal_evaluation_merge_keys(signals: pd.DataFrame, evaluations: pd.DataFra
     if all(key in signals.columns and key in evaluations.columns for key in signal_keys):
         return signal_keys
     return ["symbol"]
+
+
+def _watchlist_number(value: Any) -> float | Any:
+    parsed = safe_float(value)
+    return parsed if parsed is not None else pd.NA
