@@ -11,9 +11,9 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_prefix="BWI_")
 
     project_name: str = "Bybit Weak Intraday Lab"
-    data_dir: Path = Path("/app/data")
-    cache_dir: Path = Path("/app/data/bybit_archive_cache")
-    jobs_dir: Path = Path("/app/data/jobs")
+    data_dir: Path = Path("data")
+    cache_dir: Path = Path("data/bybit_archive_cache")
+    jobs_dir: Path = Path("data/jobs")
     max_workers: int = 1
     cors_origins: str = "*"
     execution_mode: str = "disabled"
@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     max_demo_notional_usdt: float = 25.0
     max_open_positions: int = 1
     max_daily_test_orders: int = 3
-    execution_journal_path: Path = Path("/app/data/execution_journal.csv")
+    execution_journal_path: Path = Path("data/execution_journal.csv")
     execution_api_token: str = ""
 
 

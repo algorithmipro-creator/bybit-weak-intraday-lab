@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pandas as pd
 import pytest
 
@@ -58,3 +60,12 @@ def test_backend_defaults_to_one_worker_to_avoid_cache_write_conflicts():
     settings = Settings()
 
     assert settings.max_workers == 1
+
+
+def test_backend_defaults_use_relative_data_paths_for_local_test_imports():
+    settings = Settings()
+
+    assert settings.data_dir == Path("data")
+    assert settings.cache_dir == Path("data/bybit_archive_cache")
+    assert settings.jobs_dir == Path("data/jobs")
+    assert settings.execution_journal_path == Path("data/execution_journal.csv")
