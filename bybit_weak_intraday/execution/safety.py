@@ -65,6 +65,11 @@ def validate_static_demo_order_request(
         return _blocked("symbol_not_whitelisted")
     if not math.isfinite(float(notional_usdt)) or notional_usdt <= 0:
         return _blocked("invalid_notional")
+    if (
+        not math.isfinite(float(config.max_demo_notional_usdt))
+        or config.max_demo_notional_usdt <= 0
+    ):
+        return _blocked("invalid_notional_limit")
     if notional_usdt > config.max_demo_notional_usdt:
         return _blocked("notional_limit_exceeded")
     if (

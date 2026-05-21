@@ -150,6 +150,34 @@ def test_static_gate_blocks_oversized_notional() -> None:
     assert decision.reason == "notional_limit_exceeded"
 
 
+def test_static_gate_blocks_non_finite_notional_limit() -> None:
+    decision = validate_static_demo_order_request(
+        _config(max_demo_notional_usdt=float("inf")),
+        symbol="ENAUSDT",
+        notional_usdt=10,
+        take_profit_pct=0.06,
+        stop_loss_pct=0.07,
+        daily_test_order_count=0,
+    )
+
+    assert not decision.allowed
+    assert decision.reason == "invalid_notional_limit"
+
+
+def test_static_gate_blocks_non_positive_notional_limit() -> None:
+    decision = validate_static_demo_order_request(
+        _config(max_demo_notional_usdt=0),
+        symbol="ENAUSDT",
+        notional_usdt=10,
+        take_profit_pct=0.06,
+        stop_loss_pct=0.07,
+        daily_test_order_count=0,
+    )
+
+    assert not decision.allowed
+    assert decision.reason == "invalid_notional_limit"
+
+
 def test_static_gate_blocks_invalid_notional() -> None:
     decision = validate_static_demo_order_request(
         _config(),
@@ -169,6 +197,20 @@ def test_static_gate_blocks_non_finite_notional() -> None:
         _config(),
         symbol="ENAUSDT",
         notional_usdt=float("nan"),
+        take_profit_pct=0.06,
+        stop_loss_pct=0.07,
+        daily_test_order_count=0,
+    )
+
+    assert not decision.allowed
+    assert decision.reason == "invalid_notional"
+
+
+def test_static_gate_blocks_infinite_notional() -> None:
+    decision = validate_static_demo_order_request(
+        _config(),
+        symbol="ENAUSDT",
+        notional_usdt=float("inf"),
         take_profit_pct=0.06,
         stop_loss_pct=0.07,
         daily_test_order_count=0,
@@ -199,6 +241,20 @@ def test_static_gate_blocks_non_finite_take_profit() -> None:
         notional_usdt=10,
         take_profit_pct=float("nan"),
         stop_loss_pct=0.07,
+        daily_test_order_count=0,
+    )
+
+    assert not decision.allowed
+    assert decision.reason == "missing_take_profit_or_stop_loss"
+
+
+def test_static_gate_blocks_non_finite_stop_loss() -> None:
+    decision = validate_static_demo_order_request(
+        _config(),
+        symbol="ENAUSDT",
+        notional_usdt=10,
+        take_profit_pct=0.06,
+        stop_loss_pct=float("nan"),
         daily_test_order_count=0,
     )
 
