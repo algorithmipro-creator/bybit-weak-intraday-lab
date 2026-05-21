@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import json
 
-from bybit_weak_intraday.execution.bybit_demo import BybitDemoClient, sign_v5_payload
+import pytest
+
+from bybit_weak_intraday.execution.bybit_demo import BybitDemoAPIError, BybitDemoClient, sign_v5_payload
 from bybit_weak_intraday.execution.safety import DEMO_BASE_URL
 
 
@@ -18,8 +20,9 @@ class FakeResponse:
 
 
 class FakeSession:
-    def __init__(self):
+    def __init__(self, payload: dict | None = None):
         self.calls: list[dict] = []
+        self.payload = payload or {"retCode": 0, "retMsg": "OK", "result": {"list": []}}
 
     def request(self, method, url, *, params=None, json=None, data=None, headers=None, timeout=None):
         self.calls.append(
@@ -33,7 +36,7 @@ class FakeSession:
                 "timeout": timeout,
             }
         )
-        return FakeResponse({"retCode": 0, "retMsg": "OK", "result": {"list": []}})
+        return FakeResponse(self.payload)
 
 
 def test_sign_v5_payload_is_stable_for_known_input() -> None:
@@ -122,3 +125,43 @@ def test_open_orders_defaults_to_usdt_settle_coin_without_symbol() -> None:
     client.open_orders()
 
     assert session.calls[0]["params"] == {"category": "linear", "openOnly": 0, "settleCoin": "USDT"}
+
+
+def test_nonzero_ret_code_raises_without_secrets() -> None:
+    session = FakeSession({"retCode": 10004, "retMsg": "Error sign", "result": {}})
+    client = BybitDemoClient(
+        api_key="key",
+        api_secret="secret",
+        session=session,
+        timestamp_ms=lambda: "1700000000000",
+    )
+
+    with pytest.raises(BybitDemoAPIError) as exc_info:
+        client.wallet_balance()
+
+    error = exc_info.value
+    message = str(error)
+    assert error.ret_code == 10004
+    assert error.ret_msg == "Error sign"
+    assert "10004" in message
+    assert "Error sign" in message
+    assert "key" not in message
+    assert "secret" not in message
+    assert "X-BAPI-SIGN" not in message
+
+
+def test_open_orders_signature_includes_integer_query_param() -> None:
+    session = FakeSession()
+    client = BybitDemoClient(api_key="key", api_secret="secret", session=session, timestamp_ms=lambda: "1700000000000")
+
+    client.open_orders()
+
+    call = session.calls[0]
+    assert call["params"] == {"category": "linear", "openOnly": 0, "settleCoin": "USDT"}
+    assert call["headers"]["X-BAPI-SIGN"] == sign_v5_payload(
+        api_secret="secret",
+        timestamp_ms="1700000000000",
+        api_key="key",
+        recv_window="5000",
+        payload="category=linear&openOnly=0&settleCoin=USDT",
+    )

@@ -23,6 +23,24 @@ def _compact_json(body: dict[str, Any]) -> str:
     return json.dumps(body, separators=(",", ":"), ensure_ascii=False)
 
 
+class BybitDemoAPIError(RuntimeError):
+    def __init__(
+        self,
+        *,
+        ret_code: int,
+        ret_msg: str,
+        method: str,
+        path: str,
+        response: dict[str, Any],
+    ) -> None:
+        self.ret_code = ret_code
+        self.ret_msg = ret_msg
+        self.method = method
+        self.path = path
+        self.response = response
+        super().__init__(f"Bybit Demo API error {method} {path}: retCode={ret_code} retMsg={ret_msg}")
+
+
 class BybitDemoClient:
     def __init__(
         self,
@@ -71,7 +89,6 @@ class BybitDemoClient:
         params = params or {}
         if method == "GET":
             payload = urlencode(params)
-            request_body = None
             request_data = None
         else:
             request_body = body or {}
@@ -87,7 +104,17 @@ class BybitDemoClient:
             timeout=self.timeout,
         )
         response.raise_for_status()
-        return response.json()
+        payload_json = response.json()
+        ret_code = payload_json.get("retCode")
+        if ret_code not in (None, 0):
+            raise BybitDemoAPIError(
+                ret_code=ret_code,
+                ret_msg=str(payload_json.get("retMsg", "")),
+                method=method,
+                path=path,
+                response=payload_json,
+            )
+        return payload_json
 
     def instruments_info(self, symbol: str) -> dict[str, Any]:
         return self._request("GET", "/v5/market/instruments-info", params={"category": "linear", "symbol": symbol.upper()})
