@@ -82,4 +82,19 @@ def count_daily_test_orders(path: str | Path, day: date) -> int:
     statuses = frame["status"].astype(str).str.strip().str.lower()
     modes = frame["mode"].astype(str).str.strip().str.lower()
     mask = (created.dt.date == day) & statuses.isin(COUNTED_ORDER_STATUSES) & (modes == "demo")
-    return int(mask.sum())
+    counted = frame.loc[mask]
+    if counted.empty:
+        return 0
+
+    keyed_attempts: set[tuple[str, str]] = set()
+    legacy_rows = 0
+    for _, row in counted.iterrows():
+        event_id = "" if pd.isna(row["event_id"]) else str(row["event_id"]).strip()
+        order_link_id = "" if pd.isna(row["order_link_id"]) else str(row["order_link_id"]).strip()
+        if event_id:
+            keyed_attempts.add(("event_id", event_id))
+        elif order_link_id:
+            keyed_attempts.add(("order_link_id", order_link_id))
+        else:
+            legacy_rows += 1
+    return len(keyed_attempts) + legacy_rows

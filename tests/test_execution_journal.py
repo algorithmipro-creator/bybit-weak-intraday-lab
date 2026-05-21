@@ -123,6 +123,52 @@ def test_count_daily_test_orders_counts_only_accepted_or_sent_rows(tmp_path) -> 
     assert count_daily_test_orders(path, date(2026, 5, 21)) == 2
 
 
+def test_count_daily_test_orders_deduplicates_lifecycle_rows_by_event_id(tmp_path) -> None:
+    path = tmp_path / "execution_journal.csv"
+    append_journal_event(
+        path,
+        {
+            "created_at_utc": "2026-05-21T10:00:00+00:00",
+            "event_id": "event-sent",
+            "order_link_id": "order-sent",
+            "mode": "demo",
+            "status": "accepted",
+        },
+    )
+    append_journal_event(
+        path,
+        {
+            "created_at_utc": "2026-05-21T10:00:01+00:00",
+            "event_id": "event-sent",
+            "order_link_id": "order-sent",
+            "mode": "demo",
+            "status": "sent",
+        },
+    )
+    append_journal_event(
+        path,
+        {
+            "created_at_utc": "2026-05-21T11:00:00+00:00",
+            "event_id": "event-error",
+            "order_link_id": "order-error",
+            "mode": "demo",
+            "status": "accepted",
+        },
+    )
+    append_journal_event(
+        path,
+        {
+            "created_at_utc": "2026-05-21T11:00:01+00:00",
+            "event_id": "event-error",
+            "order_link_id": "order-error",
+            "mode": "demo",
+            "status": "error",
+        },
+    )
+
+    assert count_daily_test_orders(path, date(2026, 5, 21)) == 2
+
+
 def test_count_daily_test_orders_ignores_malformed_timestamps(tmp_path) -> None:
     path = tmp_path / "execution_journal.csv"
     append_journal_event(path, {"created_at_utc": "not-a-date", "mode": "demo", "status": "accepted"})

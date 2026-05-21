@@ -263,6 +263,14 @@ def place_test_short(
                 Decimal(str(req.stop_loss_pct)),
                 rules,
             )
+            _append_event(
+                event,
+                qty=_decimal_to_str(qty),
+                take_profit=_decimal_to_str(take_profit),
+                stop_loss=_decimal_to_str(stop_loss),
+                status="accepted",
+                reason="order_submission_started",
+            )
             response = client.place_short_market_order(
                 symbol=symbol,
                 qty=_decimal_to_str(qty),

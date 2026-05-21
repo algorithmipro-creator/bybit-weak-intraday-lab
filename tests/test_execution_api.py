@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from decimal import Decimal
 from pathlib import Path
 
@@ -9,7 +10,7 @@ from fastapi.testclient import TestClient
 from backend.app import execution_routes
 from backend.app import main
 from bybit_weak_intraday.execution.bybit_demo import BybitDemoAPIError
-from bybit_weak_intraday.execution.journal import read_journal
+from bybit_weak_intraday.execution.journal import count_daily_test_orders, read_journal
 from bybit_weak_intraday.execution.safety import DEMO_BASE_URL, ExecutionConfig
 
 client = TestClient(main.app)
@@ -443,6 +444,45 @@ def test_place_test_short_daily_limit_blocks_second_request_before_order_placeme
     assert second.json()["detail"]["reason"] == "daily_test_order_limit_reached"
     assert fake_client.client_factory_called["count"] == 1
     assert len(fake_client.place_calls) == 1
-    journal = read_journal(tmp_path / "execution_journal.csv")
-    assert list(journal["status"]) == ["sent", "rejected"]
-    assert list(journal["reason"]) == ["allowed", "daily_test_order_limit_reached"]
+    journal_path = tmp_path / "execution_journal.csv"
+    journal = read_journal(journal_path)
+    assert list(journal["status"]) == ["accepted", "sent", "rejected"]
+    assert list(journal["reason"]) == ["order_submission_started", "allowed", "daily_test_order_limit_reached"]
+    assert count_daily_test_orders(journal_path, datetime.now(timezone.utc).date()) == 1
+
+
+def test_place_test_short_transport_error_consumes_daily_attempt_before_retry(monkeypatch, tmp_path):
+    class TimeoutAfterPlaceClient(FakeClient):
+        def place_short_market_order(self, **kwargs):
+            self.place_calls.append(kwargs)
+            raise requests.RequestException("timed out after Bybit may have accepted")
+
+    fake_client = _patch_execution(
+        monkeypatch,
+        tmp_path,
+        fake_client=TimeoutAfterPlaceClient(),
+        max_daily_test_orders=1,
+    )
+    payload = {"symbol": "ENAUSDT", "notional_usdt": 10, "take_profit_pct": 0.06, "stop_loss_pct": 0.07}
+
+    first = client.post("/execution/demo/place-test-short", headers=_auth_headers(), json=payload)
+    second = client.post("/execution/demo/place-test-short", headers=_auth_headers(), json=payload)
+
+    assert first.status_code == 502
+    assert first.json()["detail"]["reason"] == "bybit_transport_error"
+    assert second.status_code == 400
+    assert second.json()["detail"]["reason"] == "daily_test_order_limit_reached"
+    assert fake_client.client_factory_called["count"] == 1
+    assert len(fake_client.place_calls) == 1
+    journal_path = tmp_path / "execution_journal.csv"
+    journal = read_journal(journal_path)
+    assert list(journal["status"]) == ["accepted", "error", "rejected"]
+    assert list(journal["reason"]) == [
+        "order_submission_started",
+        "bybit_transport_error",
+        "daily_test_order_limit_reached",
+    ]
+    assert Decimal(str(journal.loc[0, "qty"])) == Decimal("10")
+    assert format(Decimal(str(journal.loc[0, "take_profit"])), ".4f") == "0.9400"
+    assert format(Decimal(str(journal.loc[0, "stop_loss"])), ".4f") == "1.0700"
+    assert count_daily_test_orders(journal_path, datetime.now(timezone.utc).date()) == 1
