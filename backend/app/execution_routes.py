@@ -32,8 +32,8 @@ router = APIRouter(prefix="/execution/demo", tags=["execution-demo"])
 class TestShortRequest(BaseModel):
     symbol: str = Field(..., min_length=3, max_length=30)
     notional_usdt: float = Field(..., gt=0)
-    take_profit_pct: float = Field(..., gt=0, le=1)
-    stop_loss_pct: float = Field(..., gt=0, le=1)
+    take_profit_pct: float
+    stop_loss_pct: float
 
 
 def execution_config_from_settings() -> ExecutionConfig:

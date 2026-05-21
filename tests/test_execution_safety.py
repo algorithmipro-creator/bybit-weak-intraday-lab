@@ -276,6 +276,20 @@ def test_static_gate_blocks_take_profit_pct_at_or_above_one() -> None:
     assert decision.reason == "invalid_take_profit_or_stop_loss_pct"
 
 
+def test_static_gate_blocks_take_profit_pct_above_one() -> None:
+    decision = validate_static_demo_order_request(
+        _config(),
+        symbol="ENAUSDT",
+        notional_usdt=10,
+        take_profit_pct=1.2,
+        stop_loss_pct=0.07,
+        daily_test_order_count=0,
+    )
+
+    assert not decision.allowed
+    assert decision.reason == "invalid_take_profit_or_stop_loss_pct"
+
+
 def test_static_gate_blocks_stop_loss_pct_at_or_above_one() -> None:
     decision = validate_static_demo_order_request(
         _config(),
@@ -283,6 +297,20 @@ def test_static_gate_blocks_stop_loss_pct_at_or_above_one() -> None:
         notional_usdt=10,
         take_profit_pct=0.06,
         stop_loss_pct=1,
+        daily_test_order_count=0,
+    )
+
+    assert not decision.allowed
+    assert decision.reason == "invalid_take_profit_or_stop_loss_pct"
+
+
+def test_static_gate_blocks_stop_loss_pct_above_one() -> None:
+    decision = validate_static_demo_order_request(
+        _config(),
+        symbol="ENAUSDT",
+        notional_usdt=10,
+        take_profit_pct=0.06,
+        stop_loss_pct=1.2,
         daily_test_order_count=0,
     )
 
