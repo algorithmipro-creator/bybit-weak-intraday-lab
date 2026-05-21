@@ -21,13 +21,14 @@ class FakeSession:
     def __init__(self):
         self.calls: list[dict] = []
 
-    def request(self, method, url, *, params=None, json=None, headers=None, timeout=None):
+    def request(self, method, url, *, params=None, json=None, data=None, headers=None, timeout=None):
         self.calls.append(
             {
                 "method": method,
                 "url": url,
                 "params": params,
                 "json": json,
+                "data": data,
                 "headers": headers,
                 "timeout": timeout,
             }
@@ -59,7 +60,13 @@ def test_wallet_balance_uses_demo_base_url_and_auth_headers() -> None:
     assert call["params"] == {"accountType": "UNIFIED", "coin": "USDT"}
     assert call["headers"]["X-BAPI-API-KEY"] == "key"
     assert call["headers"]["X-BAPI-TIMESTAMP"] == "1700000000000"
-    assert "X-BAPI-SIGN" in call["headers"]
+    assert call["headers"]["X-BAPI-SIGN"] == sign_v5_payload(
+        api_secret="secret",
+        timestamp_ms="1700000000000",
+        api_key="key",
+        recv_window="5000",
+        payload="accountType=UNIFIED&coin=USDT",
+    )
 
 
 def test_place_short_market_order_posts_expected_body() -> None:
@@ -77,10 +84,41 @@ def test_place_short_market_order_posts_expected_body() -> None:
     call = session.calls[0]
     assert call["method"] == "POST"
     assert call["url"] == f"{DEMO_BASE_URL}/v5/order/create"
-    assert call["json"]["category"] == "linear"
-    assert call["json"]["side"] == "Sell"
-    assert call["json"]["orderType"] == "Market"
-    assert call["json"]["qty"] == "13"
-    assert call["json"]["takeProfit"] == "0.94"
-    assert call["json"]["stopLoss"] == "1.07"
-    json.dumps(call["json"], separators=(",", ":"))
+    assert call["json"] is None
+    assert call["data"] == (
+        '{"category":"linear","symbol":"ENAUSDT","side":"Sell","orderType":"Market","qty":"13",'
+        '"timeInForce":"IOC","positionIdx":0,"reduceOnly":false,"takeProfit":"0.94",'
+        '"stopLoss":"1.07","orderLinkId":"bwi-demo-1"}'
+    )
+    assert call["headers"]["X-BAPI-SIGN"] == sign_v5_payload(
+        api_secret="secret",
+        timestamp_ms="1700000000000",
+        api_key="key",
+        recv_window="5000",
+        payload=call["data"],
+    )
+    body = json.loads(call["data"])
+    assert body["category"] == "linear"
+    assert body["side"] == "Sell"
+    assert body["orderType"] == "Market"
+    assert body["qty"] == "13"
+    assert body["takeProfit"] == "0.94"
+    assert body["stopLoss"] == "1.07"
+
+
+def test_positions_defaults_to_usdt_settle_coin_without_symbol() -> None:
+    session = FakeSession()
+    client = BybitDemoClient(api_key="key", api_secret="secret", session=session, timestamp_ms=lambda: "1700000000000")
+
+    client.positions()
+
+    assert session.calls[0]["params"] == {"category": "linear", "settleCoin": "USDT"}
+
+
+def test_open_orders_defaults_to_usdt_settle_coin_without_symbol() -> None:
+    session = FakeSession()
+    client = BybitDemoClient(api_key="key", api_secret="secret", session=session, timestamp_ms=lambda: "1700000000000")
+
+    client.open_orders()
+
+    assert session.calls[0]["params"] == {"category": "linear", "openOnly": 0, "settleCoin": "USDT"}

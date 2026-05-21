@@ -72,14 +72,17 @@ class BybitDemoClient:
         if method == "GET":
             payload = urlencode(params)
             request_body = None
+            request_data = None
         else:
             request_body = body or {}
             payload = _compact_json(request_body)
+            request_data = payload
         response = self.session.request(
             method,
             f"{self.base_url}{path}",
             params=params if method == "GET" else None,
-            json=request_body,
+            json=None,
+            data=request_data,
             headers=self._headers(payload),
             timeout=self.timeout,
         )
@@ -99,12 +102,16 @@ class BybitDemoClient:
         params = {"category": "linear"}
         if symbol:
             params["symbol"] = symbol.upper()
+        else:
+            params["settleCoin"] = "USDT"
         return self._request("GET", "/v5/position/list", params=params)
 
     def open_orders(self, symbol: str | None = None) -> dict[str, Any]:
         params = {"category": "linear", "openOnly": 0}
         if symbol:
             params["symbol"] = symbol.upper()
+        else:
+            params["settleCoin"] = "USDT"
         return self._request("GET", "/v5/order/realtime", params=params)
 
     def place_short_market_order(
