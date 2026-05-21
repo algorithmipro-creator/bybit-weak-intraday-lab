@@ -90,10 +90,12 @@ def test_scanner_jobs_page_owns_auto_refresh_toggle() -> None:
 def test_reports_page_owns_job_result_details() -> None:
     reports_source = _function_source("render_reports_page")
     monitor_source = _function_source("render_monitor_page")
+    bot_monitor_source = _function_source("render_bot_monitor")
 
     assert "render_jobs_table" in reports_source
     assert "show_results=True" in reports_source
     assert "render_selected_job_results" not in monitor_source
+    assert "render_selected_job_results" not in bot_monitor_source
 
 
 def test_execution_history_page_owns_journal_table() -> None:
@@ -111,6 +113,21 @@ def test_execution_token_messages_do_not_reference_sidebar() -> None:
 
     assert "sidebar" not in monitor_source
     assert "sidebar" not in form_source
+
+
+def test_monitor_page_shows_only_clean_live_overview() -> None:
+    bot_monitor_source = _function_source("render_bot_monitor")
+
+    assert "build_executive_overview_html" in bot_monitor_source
+    assert "build_visual_panels_html" in bot_monitor_source
+    assert "_render_monitor_visual_charts" in bot_monitor_source
+    assert "st.dataframe(positions_frame" not in bot_monitor_source
+    assert "st.dataframe(orders_frame" not in bot_monitor_source
+    assert "st.dataframe(scanner_watchlist" not in bot_monitor_source
+    assert "Execution History" not in bot_monitor_source
+    assert "Controlled demo test short" not in bot_monitor_source
+    assert "render_demo_test_short_form" not in bot_monitor_source
+    assert "render_selected_job_results" not in bot_monitor_source
 
 
 def test_connection_screen_owns_connection_inputs() -> None:
@@ -132,12 +149,12 @@ def test_secondary_menu_contains_clean_monitor_sections() -> None:
     assert "Settings" in menu_source
 
 
-def test_bot_monitor_uses_variant_a_visual_overview_before_tables() -> None:
-    source = Path("ui/streamlit_app.py").read_text(encoding="utf-8")
+def test_bot_monitor_uses_visual_overview_and_charts() -> None:
+    source = _function_source("render_bot_monitor")
 
     assert "build_executive_overview_html" in source
     assert "build_visual_panels_html" in source
-    assert source.index("build_executive_overview_html") < source.index("st.dataframe(positions_frame")
+    assert "_render_monitor_visual_charts" in source
 
 
 class FakeResponse:

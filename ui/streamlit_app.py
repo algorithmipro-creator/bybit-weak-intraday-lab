@@ -582,8 +582,9 @@ def render_bot_monitor(api_url: str, execution_token: str) -> None:
             positions_rows = normalize_positions(positions_payload, orders_payload if not orders_error else None)
 
     positions_frame = _frame_from_rows(positions_rows)
-    orders_frame = _frame_from_rows(orders_rows)
 
+    # Keep Monitor limited to the visual overview built by build_executive_overview_html
+    # and build_visual_panels_html, plus the supporting live charts below.
     _render_variant_a_visual_overview(
         health_error=health_error,
         status_payload=status_payload,
@@ -597,33 +598,6 @@ def render_bot_monitor(api_url: str, execution_token: str) -> None:
     if not execution_token:
         st.info("Connect with an execution API token to load demo account data and order controls.")
     _render_monitor_visual_charts(positions_frame, scanner_watchlist)
-
-    main_left, main_right = st.columns(2)
-    with main_left:
-        st.subheader("Open Positions")
-        if positions_error:
-            st.info("Positions are unavailable.")
-        elif positions_frame.empty:
-            st.info("No open positions.")
-        else:
-            st.dataframe(positions_frame, use_container_width=True, hide_index=True)
-    with main_right:
-        st.subheader("Scanner Watchlist")
-        if scanner_watchlist.empty:
-            st.info("No scanner watchlist rows available.")
-        else:
-            st.dataframe(scanner_watchlist, use_container_width=True, hide_index=True)
-
-    st.subheader("Open Orders")
-    if orders_error:
-        st.info("Open orders are unavailable.")
-    elif orders_frame.empty:
-        st.info("No open orders.")
-    else:
-        st.dataframe(orders_frame, use_container_width=True, hide_index=True)
-
-    with st.expander("Controlled demo test short", expanded=False):
-        render_demo_test_short_form(api_url, execution_token, status_payload)
 
 
 def render_app_menu() -> str:
