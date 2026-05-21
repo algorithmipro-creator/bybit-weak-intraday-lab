@@ -99,14 +99,16 @@ def execution_status() -> dict:
     config = execution_config_from_settings()
     journal = read_journal(journal_path_from_settings())
     return {
-        "execution_mode": config.execution_mode,
-        "execution_enabled": config.execution_enabled,
+        "mode": config.execution_mode,
+        "enabled": config.execution_enabled,
         "configured": bool(config.api_key and config.api_secret),
         "base_url": config.base_url,
-        "symbol_whitelist": list(config.symbol_whitelist),
-        "max_demo_notional_usdt": config.max_demo_notional_usdt,
-        "max_open_positions": config.max_open_positions,
-        "max_daily_test_orders": config.max_daily_test_orders,
+        "whitelist": list(config.symbol_whitelist),
+        "limits": {
+            "max_demo_notional_usdt": config.max_demo_notional_usdt,
+            "max_open_positions": config.max_open_positions,
+            "max_daily_test_orders": config.max_daily_test_orders,
+        },
         "journal_rows": int(len(journal)),
     }
 

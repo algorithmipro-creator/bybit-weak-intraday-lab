@@ -81,9 +81,15 @@ def test_execution_status_works_without_keys(monkeypatch, tmp_path):
 
     assert response.status_code == 200
     body = response.json()
-    assert body["execution_mode"] == "disabled"
+    assert body["mode"] == "disabled"
+    assert body["enabled"] is False
     assert body["configured"] is False
+    assert body["whitelist"] == ["ENAUSDT"]
+    assert "max_demo_notional_usdt" in body["limits"]
+    assert "api_key" not in body
     assert "api_secret" not in body
+    assert "execution_mode" not in body
+    assert "execution_enabled" not in body
 
 
 def test_place_test_short_rejects_when_disabled(monkeypatch, tmp_path):
