@@ -8,7 +8,7 @@ from pathlib import Path
 from uuid import uuid4
 
 import requests
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, Header, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from bybit_weak_intraday.execution.bybit_demo import BybitDemoAPIError, BybitDemoClient
@@ -198,6 +198,23 @@ def demo_open_orders(
         raise _read_only_bybit_error(exc) from exc
     except requests.RequestException as exc:
         raise HTTPException(status_code=502, detail=_transport_error_detail()) from exc
+
+
+@router.get("/journal")
+def demo_journal(
+    limit: int = Query(default=50),
+    x_bwi_execution_token: str | None = Header(default=None, alias="X-BWI-Execution-Token"),
+) -> dict:
+    _require_execution_api_token(x_bwi_execution_token)
+    config = execution_config_from_settings()
+    _require_demo_read_config(config)
+    clamped_limit = max(1, min(int(limit), 500))
+    journal = read_journal(journal_path_from_settings())
+    if journal.empty:
+        rows: list[dict] = []
+    else:
+        rows = journal.tail(clamped_limit).iloc[::-1].fillna("").to_dict(orient="records")
+    return {"rows": rows, "limit": clamped_limit, "count": len(rows)}
 
 
 @router.post("/place-test-short")

@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 from backend.app import execution_routes
 from backend.app import main
 from bybit_weak_intraday.execution.bybit_demo import BybitDemoAPIError
-from bybit_weak_intraday.execution.journal import count_daily_test_orders, read_journal
+from bybit_weak_intraday.execution.journal import append_journal_event, count_daily_test_orders, read_journal
 from bybit_weak_intraday.execution.safety import DEMO_BASE_URL, ExecutionConfig
 
 client = TestClient(main.app)
@@ -134,6 +134,109 @@ def test_execution_status_reports_token_configured_without_exposing_token(monkey
     assert body["api_token_configured"] is True
     assert "execution_api_token" not in body
     assert EXECUTION_TOKEN not in str(body)
+
+
+def test_journal_rejects_missing_token_before_reading_journal(monkeypatch, tmp_path):
+    fake_client = _patch_execution(monkeypatch, tmp_path)
+
+    response = client.get("/execution/demo/journal")
+
+    assert response.status_code == 403
+    assert response.json()["detail"]["reason"] == "invalid_execution_api_token"
+    assert fake_client.client_factory_called["value"] is False
+
+
+def test_journal_rejects_invalid_token_before_reading_journal(monkeypatch, tmp_path):
+    fake_client = _patch_execution(monkeypatch, tmp_path)
+
+    response = client.get("/execution/demo/journal", headers=_auth_headers("wrong-token"))
+
+    assert response.status_code == 403
+    assert response.json()["detail"]["reason"] == "invalid_execution_api_token"
+    assert fake_client.client_factory_called["value"] is False
+
+
+def test_journal_returns_recent_rows_newest_first(monkeypatch, tmp_path):
+    _patch_execution(monkeypatch, tmp_path)
+    journal_path = tmp_path / "execution_journal.csv"
+    append_journal_event(
+        journal_path,
+        {
+            "created_at_utc": "2026-05-21T10:00:00+00:00",
+            "event_id": "event-1",
+            "order_link_id": "bwi-demo-1",
+            "mode": "demo",
+            "symbol": "ENAUSDT",
+            "side": "Sell",
+            "status": "accepted",
+            "reason": "order_submission_started",
+        },
+    )
+    append_journal_event(
+        journal_path,
+        {
+            "created_at_utc": "2026-05-21T10:01:00+00:00",
+            "event_id": "event-2",
+            "order_link_id": "bwi-demo-2",
+            "mode": "demo",
+            "symbol": "JTOUSDT",
+            "side": "Sell",
+            "status": "sent",
+            "reason": "allowed",
+        },
+    )
+    append_journal_event(
+        journal_path,
+        {
+            "created_at_utc": "2026-05-21T10:02:00+00:00",
+            "event_id": "event-3",
+            "order_link_id": "bwi-demo-3",
+            "mode": "demo",
+            "symbol": "ENAUSDT",
+            "side": "Sell",
+            "status": "rejected",
+            "reason": "open_position_limit_reached",
+        },
+    )
+
+    response = client.get("/execution/demo/journal?limit=2", headers=_auth_headers())
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["limit"] == 2
+    assert body["count"] == 2
+    assert [row["event_id"] for row in body["rows"]] == ["event-3", "event-2"]
+    assert body["rows"][0]["reason"] == "open_position_limit_reached"
+
+
+def test_journal_clamps_limit_and_does_not_expose_secrets(monkeypatch, tmp_path):
+    _patch_execution(monkeypatch, tmp_path, execution_api_token=EXECUTION_TOKEN)
+    journal_path = tmp_path / "execution_journal.csv"
+    append_journal_event(
+        journal_path,
+        {
+            "created_at_utc": "2026-05-21T10:00:00+00:00",
+            "event_id": "event-1",
+            "order_link_id": "bwi-demo-1",
+            "mode": "demo",
+            "symbol": "ENAUSDT",
+            "side": "Sell",
+            "status": "sent",
+            "reason": "allowed",
+            "bybit_ret_msg": "OK",
+        },
+    )
+
+    too_large = client.get("/execution/demo/journal?limit=9999", headers=_auth_headers())
+    too_small = client.get("/execution/demo/journal?limit=0", headers=_auth_headers())
+
+    assert too_large.status_code == 200
+    assert too_large.json()["limit"] == 500
+    assert too_large.json()["count"] == 1
+    assert too_small.status_code == 200
+    assert too_small.json()["limit"] == 1
+    assert EXECUTION_TOKEN not in str(too_large.json())
+    assert "secret" not in str(too_large.json())
 
 
 def test_wallet_rejects_when_token_not_configured_before_client_construction(monkeypatch, tmp_path):
