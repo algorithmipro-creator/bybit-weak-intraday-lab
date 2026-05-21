@@ -620,7 +620,7 @@ def render_monitor_page(api_url: str, execution_token: str, auto_refresh: bool) 
 def render_reports_page(api_url: str, auto_refresh: bool) -> None:
     st.header("Reports")
     st.caption("Backtest summaries, optimizer results and historical result charts.")
-    render_jobs_table(api_url, auto_refresh=auto_refresh, show_results=True)
+    render_jobs_table(api_url, auto_refresh=False, show_results=True)
 
 
 def render_selected_job_results(api_url: str, selected_job: str, *, auto_refresh: bool) -> None:

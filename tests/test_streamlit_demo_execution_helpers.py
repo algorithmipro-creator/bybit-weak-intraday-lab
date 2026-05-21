@@ -94,6 +94,8 @@ def test_reports_page_owns_job_result_details() -> None:
 
     assert "render_jobs_table" in reports_source
     assert "show_results=True" in reports_source
+    assert "auto_refresh=False" in reports_source
+    assert "Auto-refresh active jobs" not in reports_source
     assert "render_selected_job_results" not in monitor_source
     assert "render_selected_job_results" not in bot_monitor_source
 
