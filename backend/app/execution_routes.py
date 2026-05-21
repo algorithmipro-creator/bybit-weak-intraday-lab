@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from uuid import uuid4
 
+import requests
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
@@ -16,6 +17,7 @@ from bybit_weak_intraday.execution.orders import (
     quantity_from_notional,
 )
 from bybit_weak_intraday.execution.safety import (
+    DEMO_BASE_URL,
     ExecutionConfig,
     parse_symbol_whitelist,
     validate_position_limit,
@@ -70,6 +72,30 @@ def _reject(reason: str, *, event: dict, status_code: int = 400) -> None:
     raise HTTPException(status_code=status_code, detail={"status": "rejected", "reason": reason})
 
 
+def _require_demo_read_config(config: ExecutionConfig) -> None:
+    if config.execution_mode != "demo":
+        raise HTTPException(status_code=400, detail={"reason": "execution_mode_not_demo"})
+    if config.base_url != DEMO_BASE_URL:
+        raise HTTPException(status_code=400, detail={"reason": "non_demo_base_url"})
+    if not config.api_key.strip() or not config.api_secret.strip():
+        raise HTTPException(status_code=400, detail={"reason": "missing_demo_api_keys"})
+
+
+def _bybit_error_detail(exc: BybitDemoAPIError) -> dict:
+    return {
+        "status": "error",
+        "reason": "bybit_api_error",
+        "ret_code": exc.ret_code,
+        "ret_msg": exc.ret_msg,
+        "method": exc.method,
+        "path": exc.path,
+    }
+
+
+def _read_only_bybit_error(exc: BybitDemoAPIError) -> HTTPException:
+    return HTTPException(status_code=502, detail=_bybit_error_detail(exc))
+
+
 def _result_list(response: dict) -> list[dict]:
     return ((response.get("result") or {}).get("list") or [])
 
@@ -116,25 +142,31 @@ def execution_status() -> dict:
 @router.get("/wallet")
 def demo_wallet() -> dict:
     config = execution_config_from_settings()
-    if not config.api_key or not config.api_secret:
-        raise HTTPException(status_code=400, detail={"reason": "missing_demo_api_keys"})
-    return demo_client_from_config(config).wallet_balance()
+    _require_demo_read_config(config)
+    try:
+        return demo_client_from_config(config).wallet_balance()
+    except BybitDemoAPIError as exc:
+        raise _read_only_bybit_error(exc) from exc
 
 
 @router.get("/positions")
 def demo_positions(symbol: str | None = None) -> dict:
     config = execution_config_from_settings()
-    if not config.api_key or not config.api_secret:
-        raise HTTPException(status_code=400, detail={"reason": "missing_demo_api_keys"})
-    return demo_client_from_config(config).positions(symbol=symbol)
+    _require_demo_read_config(config)
+    try:
+        return demo_client_from_config(config).positions(symbol=symbol)
+    except BybitDemoAPIError as exc:
+        raise _read_only_bybit_error(exc) from exc
 
 
 @router.get("/open-orders")
 def demo_open_orders(symbol: str | None = None) -> dict:
     config = execution_config_from_settings()
-    if not config.api_key or not config.api_secret:
-        raise HTTPException(status_code=400, detail={"reason": "missing_demo_api_keys"})
-    return demo_client_from_config(config).open_orders(symbol=symbol)
+    _require_demo_read_config(config)
+    try:
+        return demo_client_from_config(config).open_orders(symbol=symbol)
+    except BybitDemoAPIError as exc:
+        raise _read_only_bybit_error(exc) from exc
 
 
 @router.post("/place-test-short")
@@ -201,17 +233,14 @@ def place_test_short(req: TestShortRequest) -> dict:
         )
         raise HTTPException(
             status_code=502,
-            detail={
-                "status": "error",
-                "reason": "bybit_api_error",
-                "bybit_ret_code": exc.ret_code,
-                "bybit_ret_msg": exc.ret_msg,
-            },
+            detail=_bybit_error_detail(exc),
         ) from exc
-    except ValueError as exc:
-        reason = str(exc)
-        _append_event(event, status="error", reason=reason)
-        raise HTTPException(status_code=400, detail={"status": "error", "reason": reason}) from exc
+    except (ValueError, KeyError, TypeError, InvalidOperation) as exc:
+        _append_event(event, status="error", reason="order_preparation_error", bybit_ret_msg=str(exc))
+        raise HTTPException(status_code=400, detail={"status": "error", "reason": "order_preparation_error"}) from exc
+    except requests.RequestException as exc:
+        _append_event(event, status="error", reason="bybit_transport_error", bybit_ret_msg=str(exc))
+        raise HTTPException(status_code=502, detail={"status": "error", "reason": "bybit_transport_error"}) from exc
 
     _append_event(
         event,
