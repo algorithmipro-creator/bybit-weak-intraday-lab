@@ -739,6 +739,47 @@ def render_latest_job_candidates(api_url: str, meta: dict) -> None:
     st.dataframe(watchlist[display_columns], use_container_width=True, hide_index=True)
 
 
+def _progress_int(value: Any) -> int:
+    try:
+        return int(value or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def render_job_progress(meta: dict) -> None:
+    progress = meta.get("progress") if isinstance(meta.get("progress"), dict) else {}
+    processed = _progress_int(progress.get("processed"))
+    total = _progress_int(progress.get("total"))
+
+    if total > 0:
+        ratio = min(max(processed / total, 0.0), 1.0)
+        st.progress(ratio, text=f"{processed} / {total} symbol-days")
+    else:
+        st.caption("Progress will appear after the scanner starts processing symbol-days.")
+
+    current_symbol = progress.get("current_symbol") or "n/a"
+    current_date = progress.get("current_date") or "n/a"
+    st.markdown("**Now scanning**")
+    st.caption(f"{current_symbol} | {current_date}")
+
+    st.markdown("**Cache**")
+    cache_cols = st.columns(4)
+    cache_cols[0].metric("Hits", progress.get("cache_hits") or 0)
+    cache_cols[1].metric("Downloads", progress.get("downloads") or 0)
+    cache_cols[2].metric("Missing", progress.get("missing_files") or 0)
+    cache_cols[3].metric("Errors", progress.get("errors") or 0)
+
+    warnings = meta.get("warnings") if isinstance(meta.get("warnings"), list) else []
+    if warnings:
+        st.markdown("**Warnings**")
+        warning_rows = [row for row in warnings if isinstance(row, dict)]
+        for warning in warning_rows[:5]:
+            symbol = warning.get("symbol") or "unknown"
+            date = warning.get("date") or "unknown"
+            message = warning.get("message") or "warning"
+            st.warning(f"{symbol} {date}: {message}")
+
+
 def render_active_job_overview(api_url: str, jobs: list[dict], *, auto_refresh: bool) -> dict | None:
     st.subheader("Active Job")
     selected_row = _select_lifecycle_job(jobs)
@@ -767,6 +808,7 @@ def render_active_job_overview(api_url: str, jobs: list[dict], *, auto_refresh: 
         cols[4].metric("Trades", _job_count(meta, "trades_rows", "evaluations_rows", "grid_trades_rows"))
         cols[5].metric("Updated", (meta.get("updated_at") or "")[:19] or "n/a")
         render_job_status(meta)
+        render_job_progress(meta)
         if meta.get("status") in ACTIVE_STATUSES and auto_refresh:
             st.caption("Auto-refreshing while this job is active.")
         render_latest_job_candidates(api_url, meta)

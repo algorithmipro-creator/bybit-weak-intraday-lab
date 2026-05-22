@@ -120,6 +120,21 @@ def test_scanner_jobs_page_renders_active_job_lifecycle_above_history() -> None:
     assert "build_scanner_watchlist" in candidates_source
 
 
+def test_active_job_overview_renders_progress_cache_stats_and_warnings() -> None:
+    active_source = _function_source("render_active_job_overview")
+    progress_source = _function_source("render_job_progress")
+
+    assert "render_job_progress(meta)" in active_source
+    assert "st.progress" in progress_source
+    assert "symbol-days" in progress_source
+    assert "Now scanning" in progress_source
+    assert "Cache" in progress_source
+    assert "cache_hits" in progress_source
+    assert "downloads" in progress_source
+    assert "missing_files" in progress_source
+    assert "warnings" in progress_source
+
+
 def test_reports_page_owns_job_result_details() -> None:
     reports_source = _function_source("render_reports_page")
     monitor_source = _function_source("render_monitor_page")
