@@ -582,6 +582,26 @@ def test_place_test_short_uses_mock_client_and_writes_journal(monkeypatch, tmp_p
     assert str(last_row["bybit_ret_code"]) in {"0", "0.0"}
 
 
+def test_submit_demo_short_order_helper_preserves_endpoint_behavior(monkeypatch, tmp_path):
+    fake_client = _patch_execution(monkeypatch, tmp_path)
+    config = execution_routes.execution_config_from_settings()
+    req = execution_routes.TestShortRequest(
+        symbol="ENAUSDT",
+        notional_usdt=10,
+        take_profit_pct=0.06,
+        stop_loss_pct=0.07,
+    )
+    event = execution_routes.demo_short_event_from_request(req, config=config)
+
+    body = execution_routes.submit_demo_short_order(req, config=config, event=event)
+
+    assert body["status"] == "sent"
+    assert body["symbol"] == "ENAUSDT"
+    assert fake_client.place_calls
+    journal = read_journal(tmp_path / "execution_journal.csv")
+    assert list(journal["status"]) == ["accepted", "sent"]
+
+
 def test_place_test_short_journals_order_preparation_error(monkeypatch, tmp_path):
     class BrokenTickerClient(FakeClient):
         def ticker(self, symbol):
