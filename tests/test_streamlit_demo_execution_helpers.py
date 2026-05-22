@@ -58,17 +58,17 @@ def test_app_shell_uses_compact_header_and_constrained_width() -> None:
 
 def test_monitor_page_does_not_render_jobs_or_connection_inputs() -> None:
     monitor_source = _function_source("render_monitor_page")
+    bot_monitor_source = _function_source("render_bot_monitor")
 
     assert "render_bot_monitor(api_url, execution_token)" in monitor_source
+    assert "st.caption" not in monitor_source
+    assert 'st.header("Bot Monitor")' not in bot_monitor_source
     assert "api_json_or_error" not in monitor_source
     assert "Start Scan Job" not in monitor_source
     assert "Start Job" not in monitor_source
     assert "Scanner Jobs" not in monitor_source
     assert "Backend API URL" not in monitor_source
     assert "Execution token" not in monitor_source
-    assert "Bot Monitor" in monitor_source
-    assert "Open Positions" in monitor_source
-    assert "Scanner Watchlist" in monitor_source
 
 
 def test_scanner_jobs_page_owns_scan_controls_and_jobs_table() -> None:

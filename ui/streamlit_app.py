@@ -580,7 +580,6 @@ def render_demo_test_short_form(api_url: str, execution_token: str, status_paylo
 
 def render_bot_monitor(api_url: str, execution_token: str) -> None:
     execution_token = execution_token.strip()
-    st.header("Bot Monitor")
 
     health_payload, health_error = api_json_or_error("/health", api_url)
     status_payload, status_error = api_json_or_error("/execution/demo/status", api_url)
@@ -655,7 +654,6 @@ def render_app_menu() -> str:
 
 
 def render_monitor_page(api_url: str, execution_token: str, auto_refresh: bool) -> None:
-    st.caption("Bot Monitor: Open Positions and Scanner Watchlist are rendered by the shared monitor implementation.")
     render_bot_monitor(api_url, execution_token)
 
 

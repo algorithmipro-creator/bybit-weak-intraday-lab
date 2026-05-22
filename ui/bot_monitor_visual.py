@@ -38,27 +38,27 @@ def monitor_visual_css() -> str:
   border: 1px solid #26313c;
   border-radius: 8px;
   color: #e5e7eb;
-  padding: 18px;
-  margin: 8px 0 16px;
-  box-shadow: 0 12px 28px rgba(0,0,0,.18);
+  padding: 15px;
+  margin: 6px 0 12px;
+  box-shadow: 0 10px 22px rgba(0,0,0,.16);
 }
 .bwi-monitor-top {
   align-items: flex-start;
   display: flex;
-  gap: 16px;
+  gap: 14px;
   justify-content: space-between;
-  margin-bottom: 14px;
+  margin-bottom: 10px;
 }
 .bwi-monitor-title {
-  font-size: 21px;
+  font-size: 18px;
   font-weight: 720;
   line-height: 1.2;
-  margin: 0 0 4px;
+  margin: 0 0 3px;
 }
 .bwi-monitor-subtitle {
   color: #9aa5b1;
-  font-size: 13px;
-  line-height: 1.45;
+  font-size: 12px;
+  line-height: 1.35;
   margin: 0;
 }
 .bwi-status-badge,
@@ -79,7 +79,7 @@ def monitor_visual_css() -> str:
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  margin: 12px 0 14px;
+  margin: 10px 0 12px;
 }
 .bwi-pill span:first-child {
   color: rgba(229,231,235,.68);
@@ -88,7 +88,7 @@ def monitor_visual_css() -> str:
 .bwi-kpi-grid {
   display: grid;
   gap: 10px;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(160px, 1fr));
 }
 .bwi-kpi-card,
 .bwi-panel {
@@ -97,7 +97,7 @@ def monitor_visual_css() -> str:
   border-radius: 8px;
 }
 .bwi-kpi-card {
-  min-height: 84px;
+  min-height: 76px;
   padding: 12px;
 }
 .bwi-kpi-label,
@@ -108,26 +108,26 @@ def monitor_visual_css() -> str:
 }
 .bwi-kpi-value {
   color: #f8fafc;
-  font-size: 22px;
+  font-size: 20px;
   font-weight: 760;
   line-height: 1.15;
-  margin-top: 8px;
+  margin-top: 7px;
   overflow-wrap: anywhere;
 }
 .bwi-kpi-detail {
   color: #87929f;
   font-size: 12px;
-  margin-top: 7px;
+  margin-top: 6px;
 }
 .bwi-panel-grid {
   display: grid;
   gap: 12px;
-  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
-  margin: 0 0 16px;
+  grid-template-columns: minmax(0, 1.12fr) minmax(320px, .88fr);
+  margin: 0 0 12px;
 }
 .bwi-panel {
   color: #e5e7eb;
-  min-height: 168px;
+  min-height: 156px;
   padding: 14px;
 }
 .bwi-panel-head {
@@ -149,6 +149,35 @@ def monitor_visual_css() -> str:
   border: 1px solid #26313c;
   border-radius: 8px;
   padding: 10px;
+}
+.bwi-position-primary {
+  padding: 13px;
+}
+.bwi-position-metrics {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 11px;
+}
+.bwi-position-metric {
+  background: #151a1f;
+  border: 1px solid #2b3743;
+  border-radius: 8px;
+  min-height: 54px;
+  padding: 8px;
+}
+.bwi-position-metric span {
+  color: #87929f;
+  display: block;
+  font-size: 11px;
+  margin-bottom: 4px;
+}
+.bwi-position-metric strong {
+  color: #f8fafc;
+  display: block;
+  font-size: 13px;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
 }
 .bwi-row-main {
   align-items: center;
@@ -211,6 +240,7 @@ def monitor_visual_css() -> str:
   .bwi-status-badge { margin-top: 10px; }
   .bwi-kpi-grid,
   .bwi-panel-grid { grid-template-columns: 1fr; }
+  .bwi-position-metrics { grid-template-columns: 1fr; }
 }
 </style>
 """
@@ -282,7 +312,7 @@ def _panel_html(title: str, rows_html: str, empty_text: str) -> str:
 
 def _position_rows_html(rows: list[dict]) -> str:
     parts = []
-    for row in rows[:3]:
+    for index, row in enumerate(rows[:3]):
         symbol = _value(row.get("symbol"))
         side = _value(row.get("side"))
         size = _value(row.get("size"))
@@ -293,21 +323,35 @@ def _position_rows_html(rows: list[dict]) -> str:
         leverage = _value(row.get("leverage"))
         take_profit = _value(row.get("take_profit"))
         stop_loss = _value(row.get("stop_loss"))
-        parts.append(
-            '<div class="bwi-list-row">'
-            '<div class="bwi-row-main">'
-            f'<div class="bwi-symbol">{escape(symbol)}</div>'
-            f'<div class="bwi-chip">{escape(side)} {escape(size)}</div>'
-            '</div>'
-            '<div class="bwi-row-detail">'
-            f'<span>Entry {escape(entry)}</span>'
-            f'<span>Mark {escape(mark)}</span>'
-            f'<span>PnL {escape(pnl)} {escape(pnl_pct)}</span>'
-            f'<span>Lev {escape(leverage)}x</span>'
-            f'<span>TP {escape(take_profit)}</span>'
-            f'<span>SL {escape(stop_loss)}</span>'
-            '</div></div>'
-        )
+        if index == 0:
+            parts.append(
+                '<div class="bwi-list-row bwi-position-primary">'
+                '<div class="bwi-row-main">'
+                f'<div class="bwi-symbol">{escape(symbol)}</div>'
+                f'<div class="bwi-chip">{escape(side)} {escape(size)} | Lev {escape(leverage)}x</div>'
+                '</div>'
+                '<div class="bwi-position-metrics">'
+                f'<div class="bwi-position-metric"><span>Entry / Mark</span><strong>{escape(entry)} -> {escape(mark)}</strong></div>'
+                f'<div class="bwi-position-metric"><span>PnL</span><strong>{escape(pnl)} {escape(pnl_pct)}</strong></div>'
+                f'<div class="bwi-position-metric"><span>TP / SL</span><strong>{escape(take_profit)} / {escape(stop_loss)}</strong></div>'
+                '</div></div>'
+            )
+        else:
+            parts.append(
+                '<div class="bwi-list-row">'
+                '<div class="bwi-row-main">'
+                f'<div class="bwi-symbol">{escape(symbol)}</div>'
+                f'<div class="bwi-chip">{escape(side)} {escape(size)}</div>'
+                '</div>'
+                '<div class="bwi-row-detail">'
+                f'<span>Entry {escape(entry)}</span>'
+                f'<span>Mark {escape(mark)}</span>'
+                f'<span>PnL {escape(pnl)} {escape(pnl_pct)}</span>'
+                f'<span>Lev {escape(leverage)}x</span>'
+                f'<span>TP {escape(take_profit)}</span>'
+                f'<span>SL {escape(stop_loss)}</span>'
+                '</div></div>'
+            )
     return "".join(parts)
 
 

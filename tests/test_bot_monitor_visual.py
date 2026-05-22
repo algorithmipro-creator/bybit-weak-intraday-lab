@@ -60,12 +60,27 @@ def test_visual_panels_html_renders_position_and_watchlist_cards() -> None:
     )
 
     assert "bwi-panel-grid" in html
+    assert "bwi-position-primary" in html
+    assert "bwi-position-metrics" in html
     assert "Open Positions" in html
     assert "Scanner Watchlist" in html
     assert "ENAUSDT" in html
-    assert "TP 0.09814" in html
+    assert "TP / SL" in html
+    assert "0.09814 / 0.11172" in html
     assert "JTOUSDT" in html
     assert "score 10" in html
+
+
+def test_visual_css_balances_large_monitor_layout() -> None:
+    from ui.bot_monitor_visual import monitor_visual_css
+
+    css = monitor_visual_css()
+
+    assert ".bwi-kpi-grid" in css
+    assert "grid-template-columns: repeat(4, minmax(160px, 1fr))" in css
+    assert ".bwi-position-primary" in css
+    assert ".bwi-position-metrics" in css
+    assert "grid-template-columns: minmax(0, 1.12fr) minmax(320px, .88fr)" in css
 
 
 def test_visual_html_escapes_dynamic_values() -> None:
