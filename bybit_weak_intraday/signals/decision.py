@@ -78,7 +78,19 @@ def _decision_status(
         return "rejected", "execution_disabled"
     if not config.demo_keys_configured:
         return "rejected", "missing_demo_keys"
-    if config.notional_usdt > config.max_notional_usdt:
+    notional_usdt = _finite_float(config.notional_usdt)
+    max_notional_usdt = _finite_float(config.max_notional_usdt)
+    take_profit_pct = _finite_float(config.take_profit_pct)
+    stop_loss_pct = _finite_float(config.stop_loss_pct)
+    if notional_usdt is None or notional_usdt <= 0:
+        return "rejected", "invalid_notional"
+    if max_notional_usdt is None or max_notional_usdt <= 0:
+        return "rejected", "invalid_notional_limit"
+    if take_profit_pct is None or stop_loss_pct is None or take_profit_pct <= 0 or stop_loss_pct <= 0:
+        return "rejected", "missing_take_profit_or_stop_loss"
+    if take_profit_pct >= 1 or stop_loss_pct >= 1:
+        return "rejected", "invalid_take_profit_or_stop_loss_pct"
+    if notional_usdt > max_notional_usdt:
         return "rejected", "notional_limit_exceeded"
     if config.open_positions_count >= config.max_open_positions:
         return "rejected", "max_open_positions_reached"
@@ -97,13 +109,12 @@ def _score(value: Any) -> float:
 
 
 def _price(value: Any) -> float | None:
-    return _finite_float(value)
+    parsed = _finite_float(value)
+    return parsed if parsed is not None and parsed > 0 else None
 
 
 def _finite_float(value: Any) -> float | None:
-    if value is None:
-        return None
-    if isinstance(value, str) and value.strip() == "":
+    if _is_missing(value):
         return None
     try:
         parsed = float(value)
@@ -113,8 +124,19 @@ def _finite_float(value: Any) -> float | None:
 
 
 def _normalize_symbol(value: Any) -> str:
-    return str(value or "").strip().upper()
+    return "" if _is_missing(value) else str(value).strip().upper()
 
 
 def _normalized_whitelist(symbols: set[str]) -> set[str]:
     return {_normalize_symbol(symbol) for symbol in symbols}
+
+
+def _is_missing(value: Any) -> bool:
+    if value is None:
+        return True
+    if isinstance(value, str):
+        return value.strip() == ""
+    try:
+        return bool(value != value)
+    except (TypeError, ValueError):
+        return True
