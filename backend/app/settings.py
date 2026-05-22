@@ -27,9 +27,20 @@ class Settings(BaseSettings):
     max_daily_test_orders: int = 3
     execution_journal_path: Path = Path("data/execution_journal.csv")
     execution_api_token: str = ""
+    signal_min_score: float = 9.0
+    signal_auto_entry_enabled: bool = False
+    signal_default_notional_usdt: float = 25.0
+    signal_take_profit_pct: float = 0.06
+    signal_stop_loss_pct: float = 0.07
+    signal_cooldown_minutes: int = 60
+    signal_decision_journal_path: Path = Path("data/signal_decisions.csv")
+    telegram_enabled: bool = False
+    telegram_bot_token: str = ""
+    telegram_chat_id: str = ""
 
 
 settings = Settings()
 settings.data_dir.mkdir(parents=True, exist_ok=True)
 settings.cache_dir.mkdir(parents=True, exist_ok=True)
 settings.jobs_dir.mkdir(parents=True, exist_ok=True)
+settings.signal_decision_journal_path.parent.mkdir(parents=True, exist_ok=True)
