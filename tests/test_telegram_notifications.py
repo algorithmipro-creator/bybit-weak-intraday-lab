@@ -91,3 +91,29 @@ def test_send_telegram_message_sanitizes_transport_errors() -> None:
     assert result.status == "error"
     assert result.error == "telegram_request_failed"
     assert "secret-token" not in str(result)
+
+
+def test_send_telegram_message_handles_telegram_api_not_ok() -> None:
+    result = send_telegram_message(
+        TelegramConfig(enabled=True, bot_token="secret-token", chat_id="123"),
+        "hello",
+        session=FakeSession(response=FakeResponse({"ok": False, "description": "secret-token rejected"})),
+    )
+
+    assert result.status == "error"
+    assert result.error == "telegram_request_failed"
+    assert "secret-token" not in str(result)
+
+
+def test_send_telegram_message_rejects_invalid_timeout_without_network() -> None:
+    session = FakeSession()
+
+    result = send_telegram_message(
+        TelegramConfig(enabled=True, bot_token="secret-token", chat_id="123", timeout_seconds=0),
+        "hello",
+        session=session,
+    )
+
+    assert result.status == "error"
+    assert result.error == "telegram_request_failed"
+    assert session.calls == []
