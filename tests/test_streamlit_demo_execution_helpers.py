@@ -100,6 +100,26 @@ def test_scanner_jobs_page_owns_auto_refresh_toggle() -> None:
     assert "auto_refresh=active_jobs_auto_refresh" in scanner_source
 
 
+def test_scanner_jobs_page_renders_active_job_lifecycle_above_history() -> None:
+    scanner_source = _function_source("render_scanner_jobs_page")
+    active_source = _function_source("render_active_job_overview")
+    candidates_source = _function_source("render_latest_job_candidates")
+
+    assert "render_active_job_overview" in scanner_source
+    assert "render_jobs_table(api_url, auto_refresh=False, show_results=True, jobs=jobs)" in scanner_source
+    assert "if active_jobs_auto_refresh and active_meta" in scanner_source
+    assert "Active Job" in active_source
+    assert "Status" in active_source
+    assert "Type" in active_source
+    assert "Metrics rows" in active_source
+    assert "Signals" in active_source
+    assert "Trades" in active_source
+    assert "Updated" in active_source
+    assert "render_latest_job_candidates(api_url, meta)" in active_source
+    assert "Latest candidates" in candidates_source
+    assert "build_scanner_watchlist" in candidates_source
+
+
 def test_reports_page_owns_job_result_details() -> None:
     reports_source = _function_source("render_reports_page")
     monitor_source = _function_source("render_monitor_page")

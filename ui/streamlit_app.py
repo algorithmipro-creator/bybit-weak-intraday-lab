@@ -661,6 +661,119 @@ def render_reports_page(api_url: str, auto_refresh: bool) -> None:
     render_jobs_table(api_url, auto_refresh=False, show_results=True)
 
 
+def _job_sort_value(job: dict) -> str:
+    return str(job.get("updated_at") or job.get("created_at") or "")
+
+
+def _job_count(meta: dict, *keys: str) -> Any:
+    for key in keys:
+        value = meta.get(key)
+        if value not in (None, ""):
+            return value
+    return 0
+
+
+def _select_lifecycle_job(jobs: list[dict]) -> dict | None:
+    job_rows = [job for job in jobs if isinstance(job, dict) and job.get("job_id")]
+    if not job_rows:
+        return None
+
+    active_rows = [job for job in job_rows if job.get("status") in ACTIVE_STATUSES]
+    if active_rows:
+        return max(active_rows, key=_job_sort_value)
+
+    selected_from_state = st.session_state.get("selected_job_id")
+    for job in job_rows:
+        if job.get("job_id") == selected_from_state:
+            return job
+
+    return max(job_rows, key=_job_sort_value)
+
+
+def render_latest_job_candidates(api_url: str, meta: dict) -> None:
+    st.markdown("**Latest candidates**")
+    job_id = meta.get("job_id")
+    job_type = meta.get("job_type") or "scan"
+    status = meta.get("status")
+    if not job_id:
+        st.info("No scanner candidates yet.")
+        return
+    if job_type == "tp_sl_grid":
+        st.info("Optimizer jobs do not produce scanner candidates.")
+        return
+    if status != "done":
+        st.info("Candidates appear here when this scanner job writes result files.")
+        return
+
+    try:
+        if job_type == "causal_scan":
+            signals = csv_to_frame(api_get(f"/jobs/{job_id}/signals.csv", api_url).text)
+            evaluations = csv_to_frame(api_get(f"/jobs/{job_id}/evaluations.csv", api_url).text)
+            watchlist = build_scanner_watchlist(job_type, signals=signals, evaluations=evaluations, max_rows=8)
+        else:
+            trades = csv_to_frame(api_get(f"/jobs/{job_id}/trades.csv", api_url).text)
+            watchlist = build_scanner_watchlist(job_type, trades=trades, max_rows=8)
+    except Exception as exc:
+        st.info(f"Candidates are not available yet: {exc}")
+        return
+
+    if watchlist.empty:
+        st.info("No scanner candidates yet.")
+        return
+
+    display_columns = [
+        column
+        for column in [
+            "symbol",
+            "mode",
+            "score",
+            "status",
+            "price",
+            "turnover_usdt",
+            "outcome",
+            "pnl_underlying_pct",
+            "time_utc",
+        ]
+        if column in watchlist.columns
+    ]
+    st.dataframe(watchlist[display_columns], use_container_width=True, hide_index=True)
+
+
+def render_active_job_overview(api_url: str, jobs: list[dict], *, auto_refresh: bool) -> dict | None:
+    st.subheader("Active Job")
+    selected_row = _select_lifecycle_job(jobs)
+    if not selected_row:
+        st.info("No scanner jobs yet. Start a scan to see its lifecycle here.")
+        return None
+
+    selected_job = selected_row["job_id"]
+    try:
+        loaded_meta = api_get(f"/jobs/{selected_job}", api_url).json()
+        meta = loaded_meta if isinstance(loaded_meta, dict) else {}
+    except Exception as exc:
+        st.warning(f"Failed to load active job details: {exc}")
+        meta = {}
+
+    meta = {**selected_row, **meta}
+    meta["job_id"] = selected_job
+    st.session_state["selected_job_id"] = selected_job
+
+    with st.container(border=True):
+        cols = st.columns(6)
+        cols[0].metric("Status", meta.get("status") or "unknown")
+        cols[1].metric("Type", meta.get("job_type") or "scan")
+        cols[2].metric("Metrics rows", _job_count(meta, "metrics_rows", "grid_rows"))
+        cols[3].metric("Signals", _job_count(meta, "signals_rows"))
+        cols[4].metric("Trades", _job_count(meta, "trades_rows", "evaluations_rows", "grid_trades_rows"))
+        cols[5].metric("Updated", (meta.get("updated_at") or "")[:19] or "n/a")
+        render_job_status(meta)
+        if meta.get("status") in ACTIVE_STATUSES and auto_refresh:
+            st.caption("Auto-refreshing while this job is active.")
+        render_latest_job_candidates(api_url, meta)
+
+    return meta
+
+
 def render_selected_job_results(api_url: str, selected_job: str, *, auto_refresh: bool) -> None:
     """Render metadata, status, downloads, tables and charts for one selected job."""
     try:
@@ -846,10 +959,17 @@ def render_selected_job_results(api_url: str, selected_job: str, *, auto_refresh
                 st.info("No candidate trades in this job.")
 
 
-def render_jobs_table(api_url: str, *, auto_refresh: bool, show_results: bool) -> str | None:
+def render_jobs_table(
+    api_url: str,
+    *,
+    auto_refresh: bool,
+    show_results: bool,
+    jobs: list[dict] | None = None,
+) -> str | None:
     st.header("Jobs")
     try:
-        jobs = api_get("/jobs", api_url).json()
+        if jobs is None:
+            jobs = api_get("/jobs", api_url).json()
         if not jobs:
             st.info("No jobs yet. Start a scan from Scanner Jobs.")
             return None
@@ -989,7 +1109,12 @@ def render_scanner_jobs_page(api_url: str, auto_refresh: bool) -> None:
         except Exception as exc:
             st.error(f"Failed to start job: {exc}")
 
-    render_jobs_table(api_url, auto_refresh=active_jobs_auto_refresh, show_results=True)
+    jobs = _safe_jobs(api_url)
+    active_meta = render_active_job_overview(api_url, jobs, auto_refresh=active_jobs_auto_refresh)
+    render_jobs_table(api_url, auto_refresh=False, show_results=True, jobs=jobs)
+    if active_jobs_auto_refresh and active_meta and active_meta.get("status") in ACTIVE_STATUSES:
+        time.sleep(3)
+        st.rerun()
 
 
 def render_execution_history_page(api_url: str, execution_token: str) -> None:
