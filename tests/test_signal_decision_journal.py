@@ -62,6 +62,18 @@ def test_read_decision_journal_normalizes_old_columns(tmp_path: Path) -> None:
     assert "extra" not in frame.columns
 
 
+def test_append_decision_event_normalizes_existing_old_column_file(tmp_path: Path) -> None:
+    path = tmp_path / "old.csv"
+    pd.DataFrame([{"decision_id": "dec-1", "extra": "drop-me"}]).to_csv(path, index=False)
+
+    append_decision_event(path, {"decision_id": "dec-2", "symbol": "ENAUSDT"})
+
+    frame = read_decision_journal(path)
+    assert list(frame.columns) == DECISION_JOURNAL_COLUMNS
+    assert list(frame["decision_id"]) == ["dec-1", "dec-2"]
+    assert frame.loc[1, "symbol"] == "ENAUSDT"
+
+
 def test_read_decision_journal_tail_returns_newest_first(tmp_path: Path) -> None:
     path = tmp_path / "signal_decisions.csv"
     append_decision_event(path, {"decision_id": "dec-1", "created_at_utc": "2026-05-22T18:00:00+00:00"})

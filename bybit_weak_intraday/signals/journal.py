@@ -39,10 +39,22 @@ def _row_from_event(event: dict[str, Any]) -> dict[str, Any]:
     return {column: event.get(column, "") for column in DECISION_JOURNAL_COLUMNS}
 
 
+def _normalize_existing_journal_for_append(journal_path: Path) -> None:
+    try:
+        frame = pd.read_csv(journal_path)
+    except (OSError, UnicodeDecodeError, pd.errors.EmptyDataError, pd.errors.ParserError):
+        _empty_decision_frame().to_csv(journal_path, index=False)
+        return
+    if list(frame.columns) != DECISION_JOURNAL_COLUMNS:
+        frame.reindex(columns=DECISION_JOURNAL_COLUMNS).fillna("").to_csv(journal_path, index=False)
+
+
 def append_decision_event(path: str | Path, event: dict[str, Any]) -> None:
     journal_path = Path(path)
     journal_path.parent.mkdir(parents=True, exist_ok=True)
     write_header = not journal_path.exists() or journal_path.stat().st_size == 0
+    if not write_header:
+        _normalize_existing_journal_for_append(journal_path)
     row = pd.DataFrame([_row_from_event(event)], columns=DECISION_JOURNAL_COLUMNS)
     row.to_csv(journal_path, mode="a", header=write_header, index=False)
 
