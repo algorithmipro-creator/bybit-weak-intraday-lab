@@ -129,7 +129,7 @@ def _cooldown_active(symbol: str) -> bool:
     for row in journal.to_dict(orient="records"):
         row_symbol = str(row.get("symbol", "")).strip().upper()
         row_status = str(row.get("status", "")).strip().lower()
-        if row_symbol != normalized_symbol or row_status not in {"entered", "qualified"}:
+        if row_symbol != normalized_symbol or row_status != "entered":
             continue
         try:
             created_at = datetime.fromisoformat(str(row.get("created_at_utc", "")).replace("Z", "+00:00"))
@@ -238,6 +238,21 @@ def _reason_from_http_exception(exc: HTTPException) -> str:
     return "order_rejected"
 
 
+def _preflight_counts_or_error(
+    config: ExecutionConfig,
+    *,
+    use_open_positions: bool = True,
+) -> tuple[int, int, str | None]:
+    try:
+        open_positions_count = current_open_positions_count(config) if use_open_positions else 0
+        daily_order_count = count_daily_test_orders(journal_path_from_settings(), datetime.now(timezone.utc).date())
+    except BybitDemoAPIError:
+        return 0, 0, "bybit_api_error"
+    except requests.RequestException:
+        return 0, 0, "bybit_transport_error"
+    return open_positions_count, daily_order_count, None
+
+
 def _candidate_rows(frame: pd.DataFrame) -> list[dict]:
     if frame.empty:
         return []
@@ -281,8 +296,7 @@ def evaluate_latest(
         return {"status": "evaluated", "count": 1, "decisions": [_public_decision(decision)]}
 
     config = execution_config_from_settings()
-    open_positions_count = current_open_positions_count(config)
-    daily_order_count = count_daily_test_orders(journal_path_from_settings(), datetime.now(timezone.utc).date())
+    open_positions_count, daily_order_count, preflight_error = _preflight_counts_or_error(config)
     decisions_out = []
     for candidate in _candidate_rows(candidates):
         symbol = _candidate_symbol(candidate)
@@ -298,6 +312,10 @@ def evaluate_latest(
             job_type=str(job.get("job_type", "")) if job else "",
             require_auto_entry=False,
         )
+        if preflight_error:
+            decision["status"] = "error"
+            decision["reason"] = preflight_error
+            decision["execution_status"] = "error"
         decision = _append_and_notify(decision, notify=req.notify)
         decisions_out.append(_public_decision(decision))
     return {"status": "evaluated", "count": len(decisions_out), "decisions": decisions_out}
@@ -318,8 +336,10 @@ def demo_auto_entry(
         return {"status": "evaluated", "count": 1, "decisions": [_public_decision(decision)]}
 
     config = execution_config_from_settings()
-    open_positions_count = 0 if req.dry_run else current_open_positions_count(config)
-    daily_order_count = count_daily_test_orders(journal_path_from_settings(), datetime.now(timezone.utc).date())
+    open_positions_count, daily_order_count, preflight_error = _preflight_counts_or_error(
+        config,
+        use_open_positions=not req.dry_run,
+    )
     attempted_entry = False
     entered = False
     decisions_out = []
@@ -337,7 +357,11 @@ def demo_auto_entry(
             job_type=str(job.get("job_type", "")) if job else "",
             require_auto_entry=not req.dry_run,
         )
-        if decision.get("status") == "qualified":
+        if preflight_error:
+            decision["status"] = "error"
+            decision["reason"] = preflight_error
+            decision["execution_status"] = "error"
+        elif decision.get("status") == "qualified":
             if attempted_entry:
                 decision["status"] = "skipped"
                 decision["reason"] = "already_entered_this_run"
