@@ -157,12 +157,15 @@ def test_demo_auto_entry_dry_run_writes_decision_without_order(monkeypatch, tmp_
         lambda max_candidates=20: ({"job_id": "job-1", "job_type": "causal_scan"}, pd.DataFrame([_candidate()])),
     )
     monkeypatch.setattr(signal_routes, "execution_config_from_settings", lambda: _execution_config())
-    monkeypatch.setattr(signal_routes, "current_open_positions_count", lambda config: 0)
     monkeypatch.setattr(signal_routes, "count_daily_test_orders", lambda path, date: 0)
+
+    def fail_positions(config):
+        raise AssertionError("dry_run should not read Bybit positions")
 
     def fail_submit(*args, **kwargs):
         raise AssertionError("submit_demo_short_order should not be called")
 
+    monkeypatch.setattr(signal_routes, "current_open_positions_count", fail_positions)
     monkeypatch.setattr(signal_routes, "submit_demo_short_order", fail_submit)
 
     response = client.post(

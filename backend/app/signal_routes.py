@@ -318,7 +318,7 @@ def demo_auto_entry(
         return {"status": "evaluated", "count": 1, "decisions": [_public_decision(decision)]}
 
     config = execution_config_from_settings()
-    open_positions_count = current_open_positions_count(config)
+    open_positions_count = 0 if req.dry_run else current_open_positions_count(config)
     daily_order_count = count_daily_test_orders(journal_path_from_settings(), datetime.now(timezone.utc).date())
     attempted_entry = False
     entered = False
