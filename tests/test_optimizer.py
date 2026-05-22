@@ -66,3 +66,76 @@ def test_run_archive_tp_sl_grid_calls_scanner_for_each_pair(monkeypatch):
     assert len(trades) == 4
     assert set(trades["tp_pct"]) == {4.0, 6.0}
     assert set(trades["sl_pct"]) == {5.0, 7.0}
+
+
+def test_run_archive_tp_sl_grid_translates_nested_scan_progress(monkeypatch):
+    events: list[dict] = []
+
+    def fake_run_archive_scan(**kwargs):
+        kwargs["progress_callback"](
+            {
+                "processed": 1,
+                "total": 2,
+                "current_symbol": "ENAUSDT",
+                "current_date": "2026-03-18",
+                "cache_hits": 1,
+                "downloads": 0,
+                "missing_files": 0,
+                "errors": 0,
+                "message": "scanning ENAUSDT 2026-03-18",
+            }
+        )
+        return pd.DataFrame(), pd.DataFrame()
+
+    monkeypatch.setattr("bybit_weak_intraday.optimizer.run_archive_scan", fake_run_archive_scan)
+
+    run_archive_tp_sl_grid(
+        start="2026-03-18",
+        end="2026-03-19",
+        symbols=["ENAUSDT"],
+        tp_grid=[0.04, 0.06],
+        sl_grid=[0.05],
+        progress_callback=events.append,
+    )
+
+    assert events[0]["processed"] == 1
+    assert events[0]["total"] == 4
+    assert events[0]["grid_combo"] == "1/2"
+    assert events[0]["tp_pct"] == 4.0
+    assert events[0]["sl_pct"] == 5.0
+    assert events[0]["message"] == "optimizing TP 4.00% / SL 5.00%: ENAUSDT 2026-03-18"
+
+
+def test_run_archive_tp_sl_grid_translates_progress_across_combo_boundary(monkeypatch):
+    events: list[dict] = []
+
+    def fake_run_archive_scan(**kwargs):
+        kwargs["progress_callback"](
+            {
+                "processed": 2,
+                "total": 2,
+                "current_symbol": "ENAUSDT",
+                "current_date": "2026-03-19",
+                "cache_hits": 2,
+                "downloads": 0,
+                "missing_files": 0,
+                "errors": 0,
+                "message": "scanning ENAUSDT 2026-03-19",
+            }
+        )
+        return pd.DataFrame(), pd.DataFrame()
+
+    monkeypatch.setattr("bybit_weak_intraday.optimizer.run_archive_scan", fake_run_archive_scan)
+
+    run_archive_tp_sl_grid(
+        start="2026-03-18",
+        end="2026-03-19",
+        symbols=["ENAUSDT"],
+        tp_grid=[0.04, 0.06],
+        sl_grid=[0.05],
+        progress_callback=events.append,
+    )
+
+    assert events[-1]["processed"] == 4
+    assert events[-1]["total"] == 4
+    assert events[-1]["grid_combo"] == "2/2"

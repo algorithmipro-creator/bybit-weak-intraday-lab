@@ -7,8 +7,18 @@ from typing import Iterable
 
 import pandas as pd
 
-from .archive import date_range, download_archive_file, get_archive_universe, http_session, load_archive_ticks, parse_date
+from .archive import date_range, download_archive_file_result, get_archive_universe, http_session, load_archive_ticks, parse_date
 from .core import StrategyConfig, score_symbol_day
+from .progress import ProgressCallback, ProgressState
+
+
+def _emit_progress(progress_callback: ProgressCallback | None, event: dict) -> None:
+    if progress_callback is None:
+        return
+    try:
+        progress_callback(event)
+    except Exception:
+        return
 
 
 def run_archive_scan(
@@ -21,6 +31,7 @@ def run_archive_scan(
     cache_dir: str | Path = "./bybit_archive_cache",
     cfg: StrategyConfig | None = None,
     sleep: float = 0.15,
+    progress_callback: ProgressCallback | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Run a tick-level archive scan and return metrics/trades dataframes."""
     cfg = cfg or StrategyConfig()
@@ -38,18 +49,26 @@ def run_archive_scan(
     if max_symbols and len(symbol_list) > max_symbols:
         symbol_list = symbol_list[:max_symbols]
 
+    progress = ProgressState(total=len(symbol_list) * len(days))
     metrics: list[dict] = []
     trades: list[dict] = []
     for sym in symbol_list:
         for day in days:
             prev = day - dt.timedelta(days=1)
-            cur_path = download_archive_file(sess, sym, day, cache, sleep=sleep)
-            prev_path = download_archive_file(sess, sym, prev, cache, sleep=sleep)
-            if cur_path is None or prev_path is None:
+            cur_result = download_archive_file_result(sess, sym, day, cache, sleep=sleep)
+            prev_result = download_archive_file_result(sess, sym, prev, cache, sleep=sleep)
+            for result in (cur_result, prev_result):
+                progress.add_archive_result(result)
+            warnings = progress.warnings_for_results(sym, str(day), [cur_result, prev_result])
+            if cur_result.path is None or prev_result.path is None:
+                event = progress.advance(sym, str(day))
+                if warnings:
+                    event["warnings"] = warnings
+                _emit_progress(progress_callback, event)
                 continue
             try:
-                cur_ticks = load_archive_ticks(cur_path)
-                prev_ticks = load_archive_ticks(prev_path)
+                cur_ticks = load_archive_ticks(cur_result.path)
+                prev_ticks = load_archive_ticks(prev_result.path)
                 m, t = score_symbol_day(sym, str(day), cur_ticks, prev_ticks, cfg)
                 if m:
                     metrics.append(m)
@@ -57,6 +76,16 @@ def run_archive_scan(
                     trades.append({**m, **t})
             except Exception as exc:
                 metrics.append({"date": str(day), "symbol": sym, "error": str(exc)})
+                progress.errors += 1
+                warnings.append({"symbol": sym, "date": str(day), "message": str(exc)})
+                event = progress.advance(sym, str(day))
+                event["warnings"] = warnings
+                _emit_progress(progress_callback, event)
+                continue
+            event = progress.advance(sym, str(day))
+            if warnings:
+                event["warnings"] = warnings
+            _emit_progress(progress_callback, event)
 
     dfm = pd.DataFrame(metrics)
     dft = pd.DataFrame(trades)

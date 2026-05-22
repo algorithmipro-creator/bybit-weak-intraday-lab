@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import csv
+from collections import deque
 from datetime import date
 from pathlib import Path
 from typing import Any
@@ -26,6 +28,10 @@ JOURNAL_COLUMNS = [
 ]
 
 COUNTED_ORDER_STATUSES = {"accepted", "sent"}
+
+
+def _empty_journal_frame() -> pd.DataFrame:
+    return pd.DataFrame(columns=JOURNAL_COLUMNS)
 
 
 def _row_from_event(event: dict[str, Any]) -> dict[str, Any]:
@@ -58,15 +64,34 @@ def append_journal_event(path: str | Path, event: dict[str, Any]) -> None:
 
 def read_journal(path: str | Path) -> pd.DataFrame:
     journal_path = Path(path)
-    if not journal_path.exists():
-        return pd.DataFrame(columns=JOURNAL_COLUMNS)
-    if journal_path.stat().st_size == 0:
-        return pd.DataFrame(columns=JOURNAL_COLUMNS)
     try:
+        if not journal_path.exists():
+            return _empty_journal_frame()
+        if journal_path.stat().st_size == 0:
+            return _empty_journal_frame()
         frame = pd.read_csv(journal_path)
-    except pd.errors.EmptyDataError:
-        return pd.DataFrame(columns=JOURNAL_COLUMNS)
+    except (OSError, UnicodeDecodeError, pd.errors.EmptyDataError, pd.errors.ParserError):
+        return _empty_journal_frame()
     return frame.reindex(columns=JOURNAL_COLUMNS)
+
+
+def read_journal_tail(path: str | Path, limit: int) -> pd.DataFrame:
+    journal_path = Path(path)
+    clamped_limit = max(1, int(limit))
+    if not journal_path.exists():
+        return _empty_journal_frame()
+    if journal_path.stat().st_size == 0:
+        return _empty_journal_frame()
+
+    try:
+        with journal_path.open("r", encoding="utf-8-sig", newline="") as handle:
+            rows = deque(csv.DictReader(handle), maxlen=clamped_limit)
+    except (csv.Error, OSError, UnicodeDecodeError, pd.errors.EmptyDataError):
+        return _empty_journal_frame()
+    if not rows:
+        return _empty_journal_frame()
+    frame = pd.DataFrame(list(reversed(rows)))
+    return frame.reindex(columns=JOURNAL_COLUMNS).reset_index(drop=True)
 
 
 def count_daily_test_orders(path: str | Path, day: date) -> int:

@@ -159,7 +159,7 @@ def test_run_archive_causal_scan_outputs_returns_signals_and_evaluations(monkeyp
     )
 
     def fake_download(_sess, symbol, day, _cache, sleep=0.15):
-        return f"{symbol}-{day}"
+        return scanner.ArchiveDownloadResult(path=f"{symbol}-{day}", status="cache_hit")
 
     def fake_load(path):
         return cur_ticks if "2026-03-18" in str(path) else prev_ticks
@@ -167,7 +167,7 @@ def test_run_archive_causal_scan_outputs_returns_signals_and_evaluations(monkeyp
     def fake_find(symbol, day, _cur_ticks, _prev_ticks, _cfg):
         return [_signal(symbol=symbol, date=day)]
 
-    monkeypatch.setattr(scanner, "download_archive_file", fake_download)
+    monkeypatch.setattr(scanner, "download_archive_file_result", fake_download)
     monkeypatch.setattr(scanner, "load_archive_ticks", fake_load)
     monkeypatch.setattr(scanner, "find_causal_signals", fake_find)
 
@@ -184,3 +184,98 @@ def test_run_archive_causal_scan_outputs_returns_signals_and_evaluations(monkeyp
     assert signals.loc[0, "symbol"] == "TESTUSDT"
     assert evaluations.loc[0, "outcome"] == "tp"
     assert evaluations.loc[0, "pnl_underlying_pct"] == pytest.approx(6.0)
+
+
+def test_run_archive_causal_scan_outputs_emits_progress_for_missing_archive(monkeypatch, tmp_path):
+    events: list[dict] = []
+
+    def fake_download(_sess, symbol, day, _cache, sleep=0.15):
+        if str(day) == "2026-03-17":
+            return scanner.ArchiveDownloadResult(path=None, status="missing")
+        return scanner.ArchiveDownloadResult(path=tmp_path / f"{symbol}-{day}.csv.gz", status="cache_hit")
+
+    monkeypatch.setattr(scanner, "download_archive_file_result", fake_download)
+    monkeypatch.setattr(scanner, "load_archive_ticks", lambda path: pd.DataFrame())
+    monkeypatch.setattr(scanner, "find_causal_signals", lambda *args, **kwargs: [])
+
+    signals, evaluations = run_archive_causal_scan_outputs(
+        start="2026-03-18",
+        end="2026-03-18",
+        symbols=["testusdt"],
+        cache_dir=tmp_path,
+        progress_callback=events.append,
+    )
+
+    assert signals.empty
+    assert evaluations.empty
+    assert events[-1]["processed"] == 1
+    assert events[-1]["total"] == 1
+    assert events[-1]["current_symbol"] == "TESTUSDT"
+    assert events[-1]["missing_files"] == 1
+    assert events[-1]["warnings"] == [
+        {"symbol": "TESTUSDT", "date": "2026-03-18", "message": "archive file missing"}
+    ]
+
+
+def test_run_archive_causal_scan_outputs_callback_failure_does_not_mutate_successful_scan(
+    monkeypatch,
+    tmp_path,
+):
+    events: list[dict] = []
+    callback_calls = 0
+    cur_ticks = pd.DataFrame(
+        {
+            "timestamp": [1773792300, 1773792600],
+            "side": ["Sell", "Sell"],
+            "size": [1, 1],
+            "price": [100.0, 94.0],
+        }
+    )
+    prev_ticks = pd.DataFrame(
+        {
+            "timestamp": [1773705600, 1773705900],
+            "side": ["Sell", "Sell"],
+            "size": [1, 1],
+            "price": [100.0, 90.0],
+        }
+    )
+
+    def fake_download(_sess, symbol, day, _cache, sleep=0.15):
+        return scanner.ArchiveDownloadResult(path=tmp_path / f"{symbol}-{day}.csv.gz", status="cache_hit")
+
+    def fake_load(path):
+        return cur_ticks if "2026-03-18" in str(path) else prev_ticks
+
+    def fake_find(symbol, day, _cur_ticks, _prev_ticks, _cfg):
+        return [_signal(symbol=symbol, date=day)]
+
+    def failing_callback(event: dict) -> None:
+        nonlocal callback_calls
+        callback_calls += 1
+        events.append(event)
+        if callback_calls == 1:
+            raise RuntimeError("job store unavailable")
+
+    monkeypatch.setattr(scanner, "download_archive_file_result", fake_download)
+    monkeypatch.setattr(scanner, "load_archive_ticks", fake_load)
+    monkeypatch.setattr(scanner, "find_causal_signals", fake_find)
+
+    signals, evaluations = run_archive_causal_scan_outputs(
+        start="2026-03-18",
+        end="2026-03-18",
+        symbols=["testusdt"],
+        cache_dir=tmp_path,
+        cfg=StrategyConfig(tp_weak=0.06, sl_weak=0.07),
+        progress_callback=failing_callback,
+    )
+
+    assert callback_calls == 1
+    assert len(events) == 1
+    assert events[0]["processed"] == 1
+    assert events[0]["total"] == 1
+    assert events[0]["errors"] == 0
+    assert len(signals) == 1
+    assert "error" not in signals.columns
+    assert signals.loc[0, "symbol"] == "TESTUSDT"
+    assert len(evaluations) == 1
+    assert evaluations.loc[0, "outcome"] == "tp"

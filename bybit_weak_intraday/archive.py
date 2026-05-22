@@ -2,8 +2,12 @@
 from __future__ import annotations
 
 import datetime as dt
+import os
 import re
+import threading
 import time
+import uuid
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 
@@ -16,6 +20,14 @@ MAJORS = {
     "LINKUSDT", "TRXUSDT", "TONUSDT", "DOTUSDT", "LTCUSDT", "BCHUSDT", "POLUSDT", "MATICUSDT",
     "ETCUSDT", "UNIUSDT", "NEARUSDT", "APTUSDT", "ARBUSDT", "OPUSDT", "FILUSDT", "ATOMUSDT",
 }
+
+
+@dataclass(frozen=True)
+class ArchiveDownloadResult:
+    path: Path | None
+    status: str
+    warning: str | None = None
+    error: str | None = None
 
 
 def parse_date(s: str) -> dt.date:
@@ -45,6 +57,19 @@ def cache_path(cache_dir: Path, symbol: str, day: dt.date) -> Path:
     return cache_dir / symbol.upper() / f"{symbol.upper()}{day:%Y-%m-%d}.csv.gz"
 
 
+def _unique_tmp_path(out: Path) -> Path:
+    suffix = f"{os.getpid()}.{threading.get_ident()}.{uuid.uuid4().hex}.tmp"
+    return out.with_name(f"{out.name}.{suffix}")
+
+
+def _safe_unlink(path: Path) -> str | None:
+    try:
+        path.unlink(missing_ok=True)
+        return None
+    except OSError as exc:
+        return str(exc)
+
+
 def get_archive_universe(sess: requests.Session, exclude_majors: bool = True) -> list[str]:
     """List USDT symbols visible in Bybit public /trading/ archive."""
     r = sess.get(BASE_ARCHIVE, timeout=30)
@@ -62,6 +87,56 @@ def get_archive_universe(sess: requests.Session, exclude_majors: bool = True) ->
     return sorted(set(syms))
 
 
+def download_archive_file_result(
+    sess: requests.Session,
+    symbol: str,
+    day: dt.date,
+    cache_dir: Path,
+    retries: int = 3,
+    sleep: float = 0.15,
+) -> ArchiveDownloadResult:
+    """Download one Bybit public archive file into cache and report cache/download status."""
+    out = cache_path(cache_dir, symbol, day)
+    if out.exists() and out.stat().st_size > 0:
+        return ArchiveDownloadResult(path=out, status="cache_hit")
+
+    out.parent.mkdir(parents=True, exist_ok=True)
+    url = archive_url(symbol, day)
+    last_warning: str | None = None
+
+    for attempt in range(retries):
+        tmp = _unique_tmp_path(out)
+        try:
+            if out.exists() and out.stat().st_size > 0:
+                return ArchiveDownloadResult(path=out, status="cache_hit", warning=last_warning)
+
+            r = sess.get(url, stream=True, timeout=60)
+            if r.status_code == 404:
+                return ArchiveDownloadResult(path=None, status="missing")
+            r.raise_for_status()
+
+            with open(tmp, "wb") as f:
+                for chunk in r.iter_content(chunk_size=1024 * 1024):
+                    if chunk:
+                        f.write(chunk)
+
+            if out.exists() and out.stat().st_size > 0:
+                cleanup_warning = _safe_unlink(tmp)
+                return ArchiveDownloadResult(path=out, status="cache_hit", warning=cleanup_warning or last_warning)
+
+            tmp.replace(out)
+            time.sleep(sleep)
+            return ArchiveDownloadResult(path=out, status="downloaded", warning=last_warning)
+        except Exception as exc:
+            cleanup_warning = _safe_unlink(tmp)
+            last_warning = cleanup_warning or last_warning
+            if attempt == retries - 1:
+                return ArchiveDownloadResult(path=None, status="error", warning=last_warning, error=str(exc))
+            time.sleep(1 + attempt)
+
+    return ArchiveDownloadResult(path=None, status="error", warning=last_warning, error="download retries exhausted")
+
+
 def download_archive_file(
     sess: requests.Session,
     symbol: str,
@@ -71,31 +146,14 @@ def download_archive_file(
     sleep: float = 0.15,
 ) -> Path | None:
     """Download one Bybit public archive file into cache; return path or None."""
-    out = cache_path(cache_dir, symbol, day)
-    if out.exists() and out.stat().st_size > 0:
-        return out
-    out.parent.mkdir(parents=True, exist_ok=True)
-    tmp = out.with_suffix(out.suffix + ".tmp")
-    url = archive_url(symbol, day)
-    for attempt in range(retries):
-        try:
-            r = sess.get(url, stream=True, timeout=60)
-            if r.status_code == 404:
-                return None
-            r.raise_for_status()
-            with open(tmp, "wb") as f:
-                for chunk in r.iter_content(chunk_size=1024 * 1024):
-                    if chunk:
-                        f.write(chunk)
-            tmp.replace(out)
-            time.sleep(sleep)
-            return out
-        except Exception:
-            tmp.unlink(missing_ok=True)
-            if attempt == retries - 1:
-                return None
-            time.sleep(1 + attempt)
-    return None
+    return download_archive_file_result(
+        sess,
+        symbol,
+        day,
+        cache_dir,
+        retries=retries,
+        sleep=sleep,
+    ).path
 
 
 def load_archive_ticks(path: Path) -> pd.DataFrame:

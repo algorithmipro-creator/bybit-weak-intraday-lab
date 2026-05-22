@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 
+import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
 
@@ -186,3 +187,113 @@ def test_done_causal_job_exposes_signal_and_evaluation_urls(monkeypatch):
     assert response.status_code == 200
     assert response.json()["signals_url"] == "/jobs/abc123def456/signals.csv"
     assert response.json()["evaluations_url"] == "/jobs/abc123def456/evaluations.csv"
+
+
+def test_run_job_persists_progress_and_warnings(monkeypatch, tmp_path):
+    monkeypatch.setattr(job_store.settings, "jobs_dir", tmp_path)
+    monkeypatch.setattr(job_store.settings, "cache_dir", tmp_path / "cache")
+
+    job_id = job_store.create_job(_scan_payload(symbols=["ENAUSDT"]))
+
+    def fake_run_archive_scan(**kwargs):
+        kwargs["progress_callback"](
+            {
+                "processed": 1,
+                "total": 1,
+                "current_symbol": "ENAUSDT",
+                "current_date": "2026-03-18",
+                "cache_hits": 1,
+                "downloads": 1,
+                "missing_files": 0,
+                "errors": 0,
+                "message": "scanning ENAUSDT 2026-03-18",
+                "warnings": [
+                    {"symbol": "ENAUSDT", "date": "2026-03-18", "message": "locked temp cleanup skipped"}
+                ],
+            }
+        )
+        return pd.DataFrame([{"symbol": "ENAUSDT"}]), pd.DataFrame()
+
+    monkeypatch.setattr(job_store, "run_archive_scan", fake_run_archive_scan)
+
+    job_store.run_job(job_id)
+
+    meta = job_store.load_meta(job_id)
+    assert meta["status"] == "done"
+    assert meta["progress"] == {
+        "processed": 1,
+        "total": 1,
+        "current_symbol": "ENAUSDT",
+        "current_date": "2026-03-18",
+        "cache_hits": 1,
+        "downloads": 1,
+        "missing_files": 0,
+        "errors": 0,
+    }
+    assert meta["message"] == "scan complete"
+    assert meta["warnings"] == [
+        {"symbol": "ENAUSDT", "date": "2026-03-18", "message": "locked temp cleanup skipped"}
+    ]
+
+
+def test_run_job_deduplicates_progress_warnings(monkeypatch, tmp_path):
+    monkeypatch.setattr(job_store.settings, "jobs_dir", tmp_path)
+    monkeypatch.setattr(job_store.settings, "cache_dir", tmp_path / "cache")
+
+    job_id = job_store.create_job(_scan_payload(symbols=["ENAUSDT"]))
+    warning = {"symbol": "ENAUSDT", "date": "2026-03-18", "message": "locked temp cleanup skipped"}
+
+    def fake_run_archive_scan(**kwargs):
+        kwargs["progress_callback"]({"warnings": [warning, warning]})
+        kwargs["progress_callback"]({"warnings": [warning]})
+        return pd.DataFrame(), pd.DataFrame()
+
+    monkeypatch.setattr(job_store, "run_archive_scan", fake_run_archive_scan)
+
+    job_store.run_job(job_id)
+
+    meta = job_store.load_meta(job_id)
+    assert meta["warnings"] == [warning]
+
+
+def test_run_causal_job_receives_progress_callback(monkeypatch, tmp_path):
+    monkeypatch.setattr(job_store.settings, "jobs_dir", tmp_path)
+    monkeypatch.setattr(job_store.settings, "cache_dir", tmp_path / "cache")
+
+    job_id = job_store.create_job(_scan_payload(symbols=["ENAUSDT"]), job_type="causal_scan")
+
+    def fake_run_archive_causal_scan_outputs(**kwargs):
+        assert kwargs["progress_callback"] is not None
+        kwargs["progress_callback"]({"processed": 1, "total": 1, "message": "causal progress"})
+        return pd.DataFrame([{"symbol": "ENAUSDT"}]), pd.DataFrame()
+
+    monkeypatch.setattr(job_store, "run_archive_causal_scan_outputs", fake_run_archive_causal_scan_outputs)
+
+    job_store.run_job(job_id)
+
+    meta = job_store.load_meta(job_id)
+    assert meta["status"] == "done"
+    assert meta["progress"]["processed"] == 1
+
+
+def test_run_grid_job_receives_progress_callback(monkeypatch, tmp_path):
+    monkeypatch.setattr(job_store.settings, "jobs_dir", tmp_path)
+    monkeypatch.setattr(job_store.settings, "cache_dir", tmp_path / "cache")
+
+    job_id = job_store.create_job(
+        {**_scan_payload(symbols=["ENAUSDT"]), "tp_grid": [0.04], "sl_grid": [0.05]},
+        job_type="tp_sl_grid",
+    )
+
+    def fake_run_archive_tp_sl_grid(**kwargs):
+        assert kwargs["progress_callback"] is not None
+        kwargs["progress_callback"]({"processed": 1, "total": 1, "message": "grid progress"})
+        return pd.DataFrame([{"tp": 0.04, "sl": 0.05}]), pd.DataFrame()
+
+    monkeypatch.setattr(job_store, "run_archive_tp_sl_grid", fake_run_archive_tp_sl_grid)
+
+    job_store.run_job(job_id)
+
+    meta = job_store.load_meta(job_id)
+    assert meta["status"] == "done"
+    assert meta["progress"]["processed"] == 1

@@ -21,6 +21,16 @@ _LOCK = Lock()
 JOB_ID_PATTERN = r"^[a-f0-9]{12}$"
 _JOB_ID_RE = re.compile(JOB_ID_PATTERN)
 ACTIVE_JOB_STATUSES = {"queued", "running"}
+PROGRESS_KEYS = {
+    "processed",
+    "total",
+    "current_symbol",
+    "current_date",
+    "cache_hits",
+    "downloads",
+    "missing_files",
+    "errors",
+}
 
 
 def now_iso() -> str:
@@ -116,7 +126,30 @@ def _strategy_config_from_request(req: dict[str, Any]) -> StrategyConfig:
     )
 
 
-def _run_scan_job(job_id: str, meta: dict[str, Any]) -> None:
+def _merge_progress_event(job_id: str, meta: dict[str, Any], event: dict[str, Any]) -> None:
+    progress = {key: event.get(key) for key in PROGRESS_KEYS if key in event}
+    if progress:
+        meta["progress"] = progress
+    if event.get("message"):
+        meta["message"] = str(event["message"])
+    warnings = event.get("warnings") or []
+    if isinstance(warnings, list):
+        existing = meta.setdefault("warnings", [])
+        for warning in warnings:
+            if isinstance(warning, dict) and warning not in existing:
+                existing.append(warning)
+    meta["updated_at"] = now_iso()
+    save_meta(job_id, meta)
+
+
+def _progress_callback(job_id: str, meta: dict[str, Any]):
+    def _callback(event: dict[str, Any]) -> None:
+        _merge_progress_event(job_id, meta, event)
+
+    return _callback
+
+
+def _run_scan_job(job_id: str, meta: dict[str, Any], progress_callback=None) -> None:
     req = meta["request"]
     cfg = _strategy_config_from_request(req)
     metrics, trades = run_archive_scan(
@@ -128,6 +161,7 @@ def _run_scan_job(job_id: str, meta: dict[str, Any]) -> None:
         max_symbols=req.get("max_symbols", 0),
         cache_dir=settings.cache_dir,
         cfg=cfg,
+        progress_callback=progress_callback,
     )
     out_dir = job_dir(job_id)
     metrics_path = out_dir / "metrics.csv"
@@ -147,7 +181,7 @@ def _run_scan_job(job_id: str, meta: dict[str, Any]) -> None:
     )
 
 
-def _run_tp_sl_grid_job(job_id: str, meta: dict[str, Any]) -> None:
+def _run_tp_sl_grid_job(job_id: str, meta: dict[str, Any], progress_callback=None) -> None:
     req = meta["request"]
     cfg = _strategy_config_from_request(req)
     grid, grid_trades = run_archive_tp_sl_grid(
@@ -161,6 +195,7 @@ def _run_tp_sl_grid_job(job_id: str, meta: dict[str, Any]) -> None:
         cfg=cfg,
         tp_grid=req.get("tp_grid") or [],
         sl_grid=req.get("sl_grid") or [],
+        progress_callback=progress_callback,
     )
     out_dir = job_dir(job_id)
     grid_path = out_dir / "grid.csv"
@@ -180,7 +215,7 @@ def _run_tp_sl_grid_job(job_id: str, meta: dict[str, Any]) -> None:
     )
 
 
-def _run_causal_scan_job(job_id: str, meta: dict[str, Any]) -> None:
+def _run_causal_scan_job(job_id: str, meta: dict[str, Any], progress_callback=None) -> None:
     req = meta["request"]
     cfg = _strategy_config_from_request(req)
     signals, evaluations = run_archive_causal_scan_outputs(
@@ -192,6 +227,7 @@ def _run_causal_scan_job(job_id: str, meta: dict[str, Any]) -> None:
         max_symbols=req.get("max_symbols", 0),
         cache_dir=settings.cache_dir,
         cfg=cfg,
+        progress_callback=progress_callback,
     )
     out_dir = job_dir(job_id)
     signals_path = out_dir / "signals.csv"
@@ -215,15 +251,31 @@ def run_job(job_id: str) -> None:
     meta = load_meta(job_id)
     if not meta:
         return
-    meta.update({"status": "running", "updated_at": now_iso(), "message": "scan running"})
+    meta.update(
+        {
+            "status": "running",
+            "updated_at": now_iso(),
+            "message": "scan running",
+            "progress": {
+                "processed": 0,
+                "total": 0,
+                "cache_hits": 0,
+                "downloads": 0,
+                "missing_files": 0,
+                "errors": 0,
+            },
+            "warnings": [],
+        }
+    )
     save_meta(job_id, meta)
     try:
+        callback = _progress_callback(job_id, meta)
         if meta.get("job_type") == "causal_scan":
-            _run_causal_scan_job(job_id, meta)
+            _run_causal_scan_job(job_id, meta, progress_callback=callback)
         elif meta.get("job_type") == "tp_sl_grid":
-            _run_tp_sl_grid_job(job_id, meta)
+            _run_tp_sl_grid_job(job_id, meta, progress_callback=callback)
         else:
-            _run_scan_job(job_id, meta)
+            _run_scan_job(job_id, meta, progress_callback=callback)
     except Exception as exc:
         meta.update({"status": "error", "updated_at": now_iso(), "message": str(exc)})
     save_meta(job_id, meta)

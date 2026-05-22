@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 from backend.app import execution_routes
 from backend.app import main
 from bybit_weak_intraday.execution.bybit_demo import BybitDemoAPIError
-from bybit_weak_intraday.execution.journal import count_daily_test_orders, read_journal
+from bybit_weak_intraday.execution.journal import append_journal_event, count_daily_test_orders, read_journal
 from bybit_weak_intraday.execution.safety import DEMO_BASE_URL, ExecutionConfig
 
 client = TestClient(main.app)
@@ -67,12 +67,14 @@ def _patch_execution(
     base_url: str = DEMO_BASE_URL,
     max_daily_test_orders: int = 3,
     execution_api_token: str = EXECUTION_TOKEN,
+    api_key: str = "key",
+    api_secret: str = "secret",
 ):
     config = ExecutionConfig(
         execution_mode=execution_mode,
         execution_enabled=enabled,
-        api_key="key",
-        api_secret="secret",
+        api_key=api_key,
+        api_secret=api_secret,
         base_url=base_url,
         symbol_whitelist=tuple(whitelist),
         max_demo_notional_usdt=25,
@@ -134,6 +136,174 @@ def test_execution_status_reports_token_configured_without_exposing_token(monkey
     assert body["api_token_configured"] is True
     assert "execution_api_token" not in body
     assert EXECUTION_TOKEN not in str(body)
+
+
+def test_journal_rejects_missing_token_before_reading_journal(monkeypatch, tmp_path):
+    fake_client = _patch_execution(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        execution_routes,
+        "read_journal_tail",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("journal should not be read")),
+    )
+
+    response = client.get("/execution/demo/journal")
+
+    assert response.status_code == 403
+    assert response.json()["detail"]["reason"] == "invalid_execution_api_token"
+    assert fake_client.client_factory_called["value"] is False
+
+
+def test_journal_rejects_invalid_token_before_reading_journal(monkeypatch, tmp_path):
+    fake_client = _patch_execution(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        execution_routes,
+        "read_journal_tail",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("journal should not be read")),
+    )
+
+    response = client.get("/execution/demo/journal", headers=_auth_headers("wrong-token"))
+
+    assert response.status_code == 403
+    assert response.json()["detail"]["reason"] == "invalid_execution_api_token"
+    assert fake_client.client_factory_called["value"] is False
+
+
+def test_journal_rejects_non_demo_mode_before_reading_journal(monkeypatch, tmp_path):
+    fake_client = _patch_execution(monkeypatch, tmp_path, execution_mode="disabled")
+    monkeypatch.setattr(
+        execution_routes,
+        "read_journal_tail",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("journal should not be read")),
+    )
+
+    response = client.get("/execution/demo/journal", headers=_auth_headers())
+
+    assert response.status_code == 400
+    assert response.json()["detail"]["reason"] == "execution_mode_not_demo"
+    assert fake_client.client_factory_called["value"] is False
+
+
+def test_journal_rejects_missing_demo_keys_before_reading_journal(monkeypatch, tmp_path):
+    fake_client = _patch_execution(monkeypatch, tmp_path, api_key="", api_secret="")
+    monkeypatch.setattr(
+        execution_routes,
+        "read_journal_tail",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("journal should not be read")),
+    )
+
+    response = client.get("/execution/demo/journal", headers=_auth_headers())
+
+    assert response.status_code == 400
+    assert response.json()["detail"]["reason"] == "missing_demo_api_keys"
+    assert fake_client.client_factory_called["value"] is False
+
+
+def test_journal_returns_recent_rows_newest_first(monkeypatch, tmp_path):
+    fake_client = _patch_execution(monkeypatch, tmp_path)
+    journal_path = tmp_path / "execution_journal.csv"
+    append_journal_event(
+        journal_path,
+        {
+            "created_at_utc": "2026-05-21T10:00:00+00:00",
+            "event_id": "event-1",
+            "order_link_id": "bwi-demo-1",
+            "mode": "demo",
+            "symbol": "ENAUSDT",
+            "side": "Sell",
+            "status": "accepted",
+            "reason": "order_submission_started",
+        },
+    )
+    append_journal_event(
+        journal_path,
+        {
+            "created_at_utc": "2026-05-21T10:01:00+00:00",
+            "event_id": "event-2",
+            "order_link_id": "bwi-demo-2",
+            "mode": "demo",
+            "symbol": "JTOUSDT",
+            "side": "Sell",
+            "status": "sent",
+            "reason": "allowed",
+        },
+    )
+    append_journal_event(
+        journal_path,
+        {
+            "created_at_utc": "2026-05-21T10:02:00+00:00",
+            "event_id": "event-3",
+            "order_link_id": "bwi-demo-3",
+            "mode": "demo",
+            "symbol": "ENAUSDT",
+            "side": "Sell",
+            "status": "rejected",
+            "reason": "open_position_limit_reached",
+        },
+    )
+
+    response = client.get("/execution/demo/journal?limit=2", headers=_auth_headers())
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["limit"] == 2
+    assert body["count"] == 2
+    assert [row["event_id"] for row in body["rows"]] == ["event-3", "event-2"]
+    assert body["rows"][0]["reason"] == "open_position_limit_reached"
+    assert fake_client.client_factory_called["value"] is False
+
+
+def test_journal_clamps_limit_and_does_not_expose_secrets(monkeypatch, tmp_path):
+    _patch_execution(monkeypatch, tmp_path, execution_api_token=EXECUTION_TOKEN)
+    journal_path = tmp_path / "execution_journal.csv"
+    journal_path.write_text(
+        "created_at_utc,event_id,order_link_id,mode,symbol,side,status,reason,bybit_ret_msg,api_secret\n"
+        f"2026-05-21T10:00:00+00:00,event-1,bwi-demo-1,demo,ENAUSDT,Sell,sent,allowed,OK,{EXECUTION_TOKEN}-secret-key\n",
+        encoding="utf-8",
+    )
+
+    too_large = client.get("/execution/demo/journal?limit=9999", headers=_auth_headers())
+    too_small = client.get("/execution/demo/journal?limit=0", headers=_auth_headers())
+
+    assert too_large.status_code == 200
+    assert too_large.json()["limit"] == 500
+    assert too_large.json()["count"] == 1
+    assert too_small.status_code == 200
+    assert too_small.json()["limit"] == 1
+    assert "api_secret" not in too_large.json()["rows"][0]
+    assert EXECUTION_TOKEN not in str(too_large.json())
+    assert "secret" not in str(too_large.json())
+
+
+def test_journal_redacts_configured_secrets_from_canonical_fields(monkeypatch, tmp_path):
+    _patch_execution(
+        monkeypatch,
+        tmp_path,
+        api_key="demo-key",
+        api_secret="demo-secret",
+        execution_api_token=EXECUTION_TOKEN,
+    )
+    journal_path = tmp_path / "execution_journal.csv"
+    append_journal_event(
+        journal_path,
+        {
+            "created_at_utc": "2026-05-21T10:00:00+00:00",
+            "event_id": "event-1",
+            "mode": "demo",
+            "status": "error",
+            "reason": "demo-secret",
+            "bybit_ret_msg": f"bad {EXECUTION_TOKEN} demo-key demo-secret",
+            "raw_response_path": f"C:/tmp/{EXECUTION_TOKEN}.json",
+        },
+    )
+
+    response = client.get("/execution/demo/journal", headers=_auth_headers())
+
+    assert response.status_code == 200
+    body_text = str(response.json())
+    assert EXECUTION_TOKEN not in body_text
+    assert "demo-key" not in body_text
+    assert "demo-secret" not in body_text
+    assert "[redacted]" in body_text
 
 
 def test_wallet_rejects_when_token_not_configured_before_client_construction(monkeypatch, tmp_path):
