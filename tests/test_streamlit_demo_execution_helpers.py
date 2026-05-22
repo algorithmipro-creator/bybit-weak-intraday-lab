@@ -39,6 +39,7 @@ def test_streamlit_app_defines_clean_navigation_pages() -> None:
     assert "render_monitor_page" in source
     assert "render_reports_page" in source
     assert "render_scanner_jobs_page" in source
+    assert "render_signal_decisions_page" in source
     assert "render_execution_history_page" in source
     assert "render_settings_page" in source
 
@@ -225,8 +226,25 @@ def test_secondary_menu_contains_clean_monitor_sections() -> None:
     assert "Monitor" in menu_source
     assert "Reports" in menu_source
     assert "Scanner Jobs" in menu_source
+    assert "Signal Decisions" in menu_source
     assert "Execution History" in menu_source
     assert "Settings" in menu_source
+
+
+def test_signal_decisions_page_owns_decision_controls() -> None:
+    source = Path("ui/streamlit_app.py").read_text(encoding="utf-8")
+    page_source = _function_source("render_signal_decisions_page")
+    settings_source = _function_source("render_settings_page")
+
+    assert "render_signal_decisions_page" in source
+    assert "/signals/evaluate-latest" in page_source
+    assert "/signals/demo-auto-entry" in page_source
+    assert "/signals/decisions?limit=100" in page_source
+    assert "Evaluate latest" in page_source
+    assert "Demo auto-entry" in page_source
+    assert "Dry-run auto-entry" in page_source
+    assert "/signals/telegram/status" in settings_source
+    assert "/signals/telegram/test" in settings_source
 
 
 def test_bot_monitor_uses_visual_overview_and_charts() -> None:

@@ -641,7 +641,7 @@ def render_app_menu() -> str:
     current = normalize_page(st.session_state.get(SELECTED_PAGE_KEY))
     index = NAV_PAGES.index(current) if current in NAV_PAGES else 0
     selected_page = st.radio(
-        "Monitor / Reports / Scanner Jobs / Execution History / Settings",
+        "Monitor / Reports / Scanner Jobs / Signal Decisions / Execution History / Settings",
         NAV_PAGES,
         index=index,
         horizontal=True,
@@ -659,6 +659,60 @@ def render_reports_page(api_url: str, auto_refresh: bool) -> None:
     st.header("Reports")
     st.caption("Backtest summaries, optimizer results and historical result charts.")
     render_jobs_table(api_url, auto_refresh=False, show_results=True)
+
+
+def render_signal_decisions_page(api_url: str, execution_token: str) -> None:
+    st.header("Signal Decisions")
+    c1, c2, c3 = st.columns(3)
+    if c1.button("Evaluate latest", type="primary"):
+        try:
+            response = api_post(
+                "/signals/evaluate-latest",
+                {"max_candidates": 20, "notify": True},
+                api_url,
+                token=execution_token,
+            )
+            st.success("Latest candidates evaluated.")
+            st.json(response.json())
+        except Exception as exc:
+            st.error(f"Signal evaluation failed: {_safe_error(exc, execution_token)}")
+
+    if c2.button("Dry-run auto-entry"):
+        try:
+            response = api_post(
+                "/signals/demo-auto-entry",
+                {"max_candidates": 20, "notify": True, "dry_run": True},
+                api_url,
+                token=execution_token,
+            )
+            st.success("Dry-run auto-entry evaluated.")
+            st.json(response.json())
+        except Exception as exc:
+            st.error(f"Dry-run auto-entry failed: {_safe_error(exc, execution_token)}")
+
+    if c3.button("Demo auto-entry"):
+        try:
+            response = api_post(
+                "/signals/demo-auto-entry",
+                {"max_candidates": 20, "notify": True, "dry_run": False},
+                api_url,
+                token=execution_token,
+            )
+            st.success("Demo auto-entry completed.")
+            st.json(response.json())
+        except Exception as exc:
+            st.error(f"Demo auto-entry failed: {_safe_error(exc, execution_token)}")
+
+    payload, error = api_json_or_error("/signals/decisions?limit=100", api_url)
+    if error:
+        st.warning(f"Signal decisions unavailable: {error}")
+        return
+    rows = payload.get("rows") if isinstance(payload, dict) else []
+    frame = _frame_from_rows(rows)
+    if frame.empty:
+        st.info("No signal decisions yet.")
+        return
+    st.dataframe(frame, use_container_width=True, hide_index=True)
 
 
 def _job_sort_value(job: dict) -> str:
@@ -1237,6 +1291,20 @@ def render_settings_page(api_url: str, execution_token: str) -> None:
         }
         st.json(safe_status)
 
+    st.subheader("Telegram")
+    telegram_payload, telegram_error = api_json_or_error("/signals/telegram/status", api_url)
+    if telegram_error:
+        st.warning(f"Telegram status unavailable: {telegram_error}")
+    else:
+        st.json(telegram_payload)
+    if st.button("Send Telegram test message"):
+        try:
+            response = api_post("/signals/telegram/test", {}, api_url, token=execution_token)
+            st.success("Telegram test requested.")
+            st.json(response.json())
+        except Exception as exc:
+            st.error(f"Telegram test failed: {_safe_error(exc, execution_token)}")
+
     with st.expander("Controlled demo test short", expanded=False):
         render_demo_test_short_form(api_url, execution_token, status_for_display)
 
@@ -1266,6 +1334,8 @@ elif page == "Reports":
     render_reports_page(api_url, auto_refresh)
 elif page == "Scanner Jobs":
     render_scanner_jobs_page(api_url, auto_refresh)
+elif page == "Signal Decisions":
+    render_signal_decisions_page(api_url, execution_token)
 elif page == "Execution History":
     render_execution_history_page(api_url, execution_token)
 elif page == "Settings":
