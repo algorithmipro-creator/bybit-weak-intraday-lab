@@ -83,6 +83,19 @@ def test_visual_css_balances_large_monitor_layout() -> None:
     assert "grid-template-columns: minmax(0, 1.12fr) minmax(320px, .88fr)" in css
 
 
+def test_visual_css_uses_streamlit_theme_surfaces() -> None:
+    from ui.bot_monitor_visual import monitor_visual_css
+
+    css = monitor_visual_css()
+
+    assert "var(--background-color)" in css
+    assert "var(--text-color)" in css
+    assert "--bwi-surface-soft" in css
+    assert "--bwi-border" in css
+    for dark_color in ["#101418", "#151a1f", "#26313c", "#2b3743", "#1f2933", "#2f3b48"]:
+        assert dark_color not in css
+
+
 def test_visual_html_escapes_dynamic_values() -> None:
     html = build_executive_overview_html(
         status_label="<script>alert(1)</script>",

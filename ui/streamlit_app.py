@@ -456,12 +456,10 @@ def _style_monitor_figure(fig: go.Figure, *, height: int = 250) -> go.Figure:
     fig.update_layout(
         height=height,
         margin=dict(l=12, r=12, t=40, b=24),
-        paper_bgcolor="#101418",
-        plot_bgcolor="#101418",
-        font=dict(color="#dbe3ea", size=12),
-        title_font=dict(color="#f8fafc", size=15),
-        xaxis=dict(gridcolor="#26313c", zerolinecolor="#2b3743"),
-        yaxis=dict(gridcolor="#26313c", zerolinecolor="#2b3743"),
+        font=dict(size=12),
+        title_font=dict(size=15),
+        xaxis=dict(gridcolor="rgba(127,127,127,.22)", zerolinecolor="rgba(127,127,127,.3)"),
+        yaxis=dict(gridcolor="rgba(127,127,127,.22)", zerolinecolor="rgba(127,127,127,.3)"),
         showlegend=False,
     )
     return fig

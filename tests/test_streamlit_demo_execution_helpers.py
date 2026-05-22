@@ -208,6 +208,14 @@ def test_variant_a_visual_overview_uses_visual_builders() -> None:
     assert "build_visual_panels_html" in source
 
 
+def test_monitor_charts_do_not_force_dark_backgrounds() -> None:
+    source = _function_source("_style_monitor_figure")
+
+    assert "#101418" not in source
+    assert "paper_bgcolor" not in source
+    assert "plot_bgcolor" not in source
+
+
 class FakeResponse:
     def __init__(self, payload=None):
         self.payload = payload or {}
