@@ -14,7 +14,7 @@ from bybit_weak_intraday.execution.bybit_demo import BybitDemoAPIError
 from bybit_weak_intraday.notifications.telegram import TelegramConfig, send_telegram_message, telegram_status
 from bybit_weak_intraday.signals.candidates import build_scanner_watchlist, select_latest_scanner_job
 from bybit_weak_intraday.signals.decision import DecisionConfig, evaluate_signal_candidate
-from bybit_weak_intraday.signals.journal import append_decision_event, read_decision_journal_tail
+from bybit_weak_intraday.signals.journal import append_decision_event, read_decision_journal, read_decision_journal_tail
 
 from .execution_routes import (
     DEMO_BASE_URL,
@@ -124,7 +124,7 @@ def _cooldown_active(symbol: str) -> bool:
         return False
 
     cutoff = datetime.now(timezone.utc) - timedelta(minutes=cooldown_minutes)
-    journal = read_decision_journal_tail(decision_journal_path_from_settings(), 500)
+    journal = read_decision_journal(decision_journal_path_from_settings())
     if journal.empty:
         return False
     for row in journal.to_dict(orient="records"):

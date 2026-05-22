@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import InvalidOperation
 
 import pandas as pd
@@ -344,3 +344,33 @@ def test_evaluate_latest_does_not_create_entry_cooldown(monkeypatch, tmp_path):
     assert body["decisions"][0]["status"] == "entered"
     assert body["decisions"][0]["reason"] != "cooldown_active"
     assert len(calls) == 1
+
+
+def test_cooldown_checks_full_journal_not_fixed_tail(monkeypatch, tmp_path):
+    _patch_signal_settings(monkeypatch, tmp_path, signal_cooldown_minutes=60)
+    journal_path = tmp_path / "signal_decisions.csv"
+    now = datetime.now(timezone.utc)
+    append_decision_event(
+        journal_path,
+        {
+            "created_at_utc": (now - timedelta(minutes=5)).isoformat(),
+            "decision_id": "entered-1",
+            "symbol": "ENAUSDT",
+            "status": "entered",
+            "reason": "order_sent",
+        },
+    )
+    for idx in range(500):
+        append_decision_event(
+            journal_path,
+            {
+                "created_at_utc": (now - timedelta(minutes=4) + timedelta(seconds=idx)).isoformat(),
+                "decision_id": f"later-{idx}",
+                "symbol": "JTOUSDT",
+                "status": "rejected",
+                "reason": "score_below_threshold",
+            },
+        )
+
+    assert signal_routes._cooldown_active("ENAUSDT") is True
+    assert signal_routes._cooldown_active("JTOUSDT") is False
