@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from decimal import InvalidOperation
 
 import pandas as pd
 import requests
@@ -151,6 +152,31 @@ def test_evaluate_latest_journals_bybit_position_error(monkeypatch, tmp_path):
     assert journal.loc[0, "status"] == "error"
     assert journal.loc[0, "reason"] == "bybit_api_error"
     assert journal.loc[0, "execution_status"] == "error"
+
+
+def test_evaluate_latest_journals_position_parse_error(monkeypatch, tmp_path):
+    _patch_signal_settings(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        signal_routes,
+        "load_latest_candidates",
+        lambda max_candidates=20: ({"job_id": "job-1", "job_type": "causal_scan"}, pd.DataFrame([_candidate()])),
+    )
+    monkeypatch.setattr(signal_routes, "execution_config_from_settings", lambda: _execution_config())
+
+    def fail_positions(config):
+        raise InvalidOperation("bad position size")
+
+    monkeypatch.setattr(signal_routes, "current_open_positions_count", fail_positions)
+
+    response = client.post("/signals/evaluate-latest", headers=_headers(), json={"notify": False})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["decisions"][0]["status"] == "error"
+    assert body["decisions"][0]["reason"] == "bybit_api_error"
+    journal = read_decision_journal(tmp_path / "signal_decisions.csv")
+    assert list(journal["status"]) == ["error"]
+    assert list(journal["reason"]) == ["bybit_api_error"]
 
 
 def test_decisions_returns_journal_rows(monkeypatch, tmp_path):

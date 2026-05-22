@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from decimal import InvalidOperation
 from pathlib import Path
 from uuid import uuid4
 
@@ -250,6 +251,8 @@ def _preflight_counts_or_error(
         return 0, 0, "bybit_api_error"
     except requests.RequestException:
         return 0, 0, "bybit_transport_error"
+    except (InvalidOperation, ValueError, TypeError):
+        return 0, 0, "bybit_api_error"
     return open_positions_count, daily_order_count, None
 
 
