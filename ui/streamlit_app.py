@@ -44,9 +44,51 @@ from ui.table_totals import append_account_total_row, append_trade_total_row
 DEFAULT_API = os.getenv("BWI_API_URL", "http://backend:8000")
 ACTIVE_STATUSES = {"queued", "running"}
 
+
+def render_app_shell_chrome() -> None:
+    st.markdown(
+        """
+        <style>
+            .block-container {
+                max-width: 1360px;
+                padding-top: 1.1rem;
+                padding-left: 1.35rem;
+                padding-right: 1.35rem;
+            }
+            .bwi-app-header {
+                margin: -0.15rem 0 0.7rem 0;
+                padding: 0;
+            }
+            .bwi-app-title {
+                margin: 0;
+                font-size: 1.05rem;
+                line-height: 1.2;
+                font-weight: 650;
+                letter-spacing: 0;
+                color: var(--text-color);
+            }
+            .bwi-app-subtitle {
+                margin: 0.16rem 0 0 0;
+                font-size: 0.76rem;
+                line-height: 1.25;
+                letter-spacing: 0;
+                color: var(--text-color);
+                opacity: 0.68;
+            }
+        </style>
+        <div class="bwi-app-header">
+            <div class="bwi-app-title">Bybit Weak Intraday Lab</div>
+            <div class="bwi-app-subtitle">
+                Research dashboard for weak-continuation and pump-and-fade Bybit USDT-perp scans. No live orders.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 st.set_page_config(page_title="Bybit Weak Intraday Lab", layout="wide")
-st.title("Bybit Weak Intraday Lab")
-st.caption("Research dashboard for weak-continuation and pump-and-fade Bybit USDT-perp scans. No live orders.")
+render_app_shell_chrome()
 
 
 def api_get(path: str, api_url: str, token: str | None = None):

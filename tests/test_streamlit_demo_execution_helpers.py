@@ -43,6 +43,19 @@ def test_streamlit_app_defines_clean_navigation_pages() -> None:
     assert "render_settings_page" in source
 
 
+def test_app_shell_uses_compact_header_and_constrained_width() -> None:
+    source = Path("ui/streamlit_app.py").read_text(encoding="utf-8")
+    shell_source = _function_source("render_app_shell_chrome")
+
+    assert 'st.title("Bybit Weak Intraday Lab")' not in source
+    assert "bwi-app-title" in shell_source
+    assert "bwi-app-subtitle" in shell_source
+    assert ".block-container" in shell_source
+    assert "max-width: 1360px" in shell_source
+    assert "padding-top: 1.1rem" in shell_source
+    assert "unsafe_allow_html=True" in shell_source
+
+
 def test_monitor_page_does_not_render_jobs_or_connection_inputs() -> None:
     monitor_source = _function_source("render_monitor_page")
 
