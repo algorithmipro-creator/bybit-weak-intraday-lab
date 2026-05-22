@@ -51,9 +51,19 @@ def test_send_telegram_message_returns_disabled_without_network() -> None:
 
 
 def test_send_telegram_message_returns_not_configured_without_token_or_chat() -> None:
-    result = send_telegram_message(TelegramConfig(enabled=True, bot_token="", chat_id=""), "hello", session=FakeSession())
+    configs = [
+        TelegramConfig(enabled=True, bot_token="", chat_id="123"),
+        TelegramConfig(enabled=True, bot_token="secret", chat_id=""),
+        TelegramConfig(enabled=True, bot_token="", chat_id=""),
+    ]
 
-    assert result.status == "not_configured"
+    for config in configs:
+        session = FakeSession()
+
+        result = send_telegram_message(config, "hello", session=session)
+
+        assert result.status == "not_configured"
+        assert session.calls == []
 
 
 def test_send_telegram_message_posts_to_bot_api_without_returning_secret() -> None:
