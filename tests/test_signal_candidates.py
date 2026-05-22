@@ -15,6 +15,15 @@ def test_select_latest_scanner_job_selects_latest_done_scan_or_causal() -> None:
     assert select_latest_scanner_job(jobs)["job_id"] == "new"
 
 
+def test_select_latest_scanner_job_treats_pandas_na_timestamp_as_invalid() -> None:
+    jobs = [
+        {"job_id": "missing", "job_type": "scan", "status": "done", "updated_at": pd.NA},
+        {"job_id": "valid", "job_type": "scan", "status": "done", "updated_at": "2026-05-22T12:00:00+00:00"},
+    ]
+
+    assert select_latest_scanner_job(jobs)["job_id"] == "valid"
+
+
 def test_build_scanner_watchlist_from_causal_signals() -> None:
     signals = pd.DataFrame(
         [

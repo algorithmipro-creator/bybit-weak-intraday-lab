@@ -53,7 +53,12 @@ def build_scanner_watchlist(
 
 def _job_updated_at(job: dict) -> datetime:
     value = job.get("updated_at")
-    if not value:
+    try:
+        if value is None or pd.isna(value):
+            return datetime.min.replace(tzinfo=timezone.utc)
+    except (TypeError, ValueError):
+        pass
+    if isinstance(value, str) and value.strip() == "":
         return datetime.min.replace(tzinfo=timezone.utc)
     try:
         parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
