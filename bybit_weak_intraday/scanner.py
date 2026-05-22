@@ -12,6 +12,15 @@ from .core import StrategyConfig, score_symbol_day
 from .progress import ProgressCallback, ProgressState
 
 
+def _emit_progress(progress_callback: ProgressCallback | None, event: dict) -> None:
+    if progress_callback is None:
+        return
+    try:
+        progress_callback(event)
+    except Exception:
+        return
+
+
 def run_archive_scan(
     start: str | dt.date,
     end: str | dt.date,
@@ -55,8 +64,7 @@ def run_archive_scan(
                 event = progress.advance(sym, str(day))
                 if warnings:
                     event["warnings"] = warnings
-                if progress_callback:
-                    progress_callback(event)
+                _emit_progress(progress_callback, event)
                 continue
             try:
                 cur_ticks = load_archive_ticks(cur_result.path)
@@ -66,19 +74,18 @@ def run_archive_scan(
                     metrics.append(m)
                 if t and m:
                     trades.append({**m, **t})
-                event = progress.advance(sym, str(day))
-                if warnings:
-                    event["warnings"] = warnings
-                if progress_callback:
-                    progress_callback(event)
             except Exception as exc:
                 metrics.append({"date": str(day), "symbol": sym, "error": str(exc)})
                 progress.errors += 1
                 warnings.append({"symbol": sym, "date": str(day), "message": str(exc)})
                 event = progress.advance(sym, str(day))
                 event["warnings"] = warnings
-                if progress_callback:
-                    progress_callback(event)
+                _emit_progress(progress_callback, event)
+                continue
+            event = progress.advance(sym, str(day))
+            if warnings:
+                event["warnings"] = warnings
+            _emit_progress(progress_callback, event)
 
     dfm = pd.DataFrame(metrics)
     dft = pd.DataFrame(trades)

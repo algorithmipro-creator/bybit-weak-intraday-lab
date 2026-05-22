@@ -68,3 +68,52 @@ def test_run_archive_scan_emits_progress_for_parse_error(monkeypatch, tmp_path: 
     assert events[-1]["warnings"] == [
         {"symbol": "ENAUSDT", "date": "2026-03-18", "message": "bad csv"}
     ]
+
+
+def test_run_archive_scan_callback_failure_does_not_mutate_successful_scan(monkeypatch, tmp_path: Path) -> None:
+    events: list[dict] = []
+    callback_calls = 0
+
+    def fake_download(_sess, symbol, day, _cache, sleep=0.15):
+        return ArchiveDownloadResult(path=Path(f"{symbol}-{day}.csv.gz"), status="cache_hit")
+
+    def fake_score_symbol_day(*args, **kwargs):
+        return (
+            {
+                "date": "2026-03-18",
+                "symbol": "ENAUSDT",
+                "candidate_score": 3.0,
+                "turnover_usdt": 100.0,
+            },
+            {"entry_ts": "2026-03-18T00:00:00Z"},
+        )
+
+    def failing_callback(event: dict) -> None:
+        nonlocal callback_calls
+        callback_calls += 1
+        events.append(event)
+        if callback_calls == 1:
+            raise RuntimeError("job store unavailable")
+
+    monkeypatch.setattr(scanner, "download_archive_file_result", fake_download)
+    monkeypatch.setattr(scanner, "load_archive_ticks", lambda path: pd.DataFrame())
+    monkeypatch.setattr(scanner, "score_symbol_day", fake_score_symbol_day)
+
+    metrics, trades = run_archive_scan(
+        start="2026-03-18",
+        end="2026-03-18",
+        symbols=["ENAUSDT"],
+        cache_dir=tmp_path,
+        progress_callback=failing_callback,
+    )
+
+    assert callback_calls == 1
+    assert len(events) == 1
+    assert events[0]["processed"] == 1
+    assert events[0]["total"] == 1
+    assert events[0]["errors"] == 0
+    assert len(metrics) == 1
+    assert "error" not in metrics.columns
+    assert metrics.loc[0, "candidate_score"] == 3.0
+    assert len(trades) == 1
+    assert trades.loc[0, "entry_ts"] == "2026-03-18T00:00:00Z"
