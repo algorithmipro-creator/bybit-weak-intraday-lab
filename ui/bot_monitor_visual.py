@@ -34,7 +34,8 @@ def monitor_visual_css() -> str:
     return """
 <style>
 .bwi-executive-overview,
-.bwi-panel-grid {
+.bwi-panel-grid,
+.bwi-signal-decisions-panel {
   --bwi-surface: var(--background-color);
   --bwi-surface-soft: rgba(127, 127, 127, .07);
   --bwi-surface-strong: rgba(127, 127, 127, .11);
@@ -254,7 +255,8 @@ def monitor_visual_css() -> str:
 .bwi-kpi-card.bwi-tone-accent .bwi-kpi-value { color: #1d4ed8; }
 @media (prefers-color-scheme: dark) {
   .bwi-executive-overview,
-  .bwi-panel-grid {
+  .bwi-panel-grid,
+  .bwi-signal-decisions-panel {
     --bwi-surface-soft: rgba(255, 255, 255, .055);
     --bwi-surface-strong: rgba(255, 255, 255, .085);
     --bwi-border: rgba(255, 255, 255, .13);
@@ -315,7 +317,11 @@ def build_visual_panels_html(*, position_rows: list[dict], watchlist_rows: list[
 
 
 def build_signal_decisions_panel_html(decision_rows: list[dict]) -> str:
-    return _panel_html("Signal Decisions", _signal_decision_rows_html(decision_rows), "No signal decisions yet.")
+    return (
+        '<div class="bwi-signal-decisions-panel">'
+        f'{_panel_html("Signal Decisions", _signal_decision_rows_html(decision_rows), "No signal decisions yet.")}'
+        "</div>"
+    )
 
 
 def _pill_html(pill: VisualPill) -> str:

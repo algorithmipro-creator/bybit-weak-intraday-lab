@@ -89,6 +89,7 @@ def test_visual_css_uses_streamlit_theme_surfaces() -> None:
 
     css = monitor_visual_css()
 
+    assert ".bwi-signal-decisions-panel" in css
     assert "var(--background-color)" in css
     assert "var(--text-color)" in css
     assert "--bwi-surface-soft" in css
@@ -139,6 +140,7 @@ def test_signal_decisions_panel_renders_latest_decisions() -> None:
     assert "Telegram sent" in html
     assert "bwi-tone-success" in html
     assert "bwi-tone-muted" in html
+    assert "bwi-signal-decisions-panel" in html
 
 
 def test_signal_decisions_panel_renders_empty_state() -> None:
@@ -166,3 +168,41 @@ def test_signal_decisions_panel_escapes_dynamic_values() -> None:
     assert "<svg" not in html
     assert "&lt;script&gt;" in html
     assert "&lt;img src=x&gt;" in html
+
+
+def test_signal_decisions_panel_caps_rows_at_five() -> None:
+    html = build_signal_decisions_panel_html(
+        [
+            {
+                "symbol": f"SYMBOL{index}",
+                "status": "neutral",
+                "reason": "queued",
+                "telegram_status": "pending",
+            }
+            for index in range(6)
+        ]
+    )
+
+    assert html.count("bwi-list-row") == 5
+    assert "SYMBOL0" in html
+    assert "SYMBOL4" in html
+    assert "SYMBOL5" not in html
+
+
+def test_signal_decisions_panel_renders_optional_execution_and_order_fields() -> None:
+    html = build_signal_decisions_panel_html(
+        [
+            {
+                "symbol": "ENAUSDT",
+                "status": "entered",
+                "reason": "qualified",
+                "telegram_status": "sent",
+                "execution_status": "filled",
+                "order_link_id": "bwi-123",
+            }
+        ]
+    )
+
+    assert "filled" in html
+    assert "bwi-123" in html
+    assert "bwi-tone-success" in html
