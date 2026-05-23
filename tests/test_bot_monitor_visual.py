@@ -4,6 +4,7 @@ from ui.bot_monitor_visual import (
     VisualMetric,
     VisualPill,
     build_executive_overview_html,
+    build_signal_decisions_panel_html,
     build_visual_panels_html,
 )
 
@@ -108,3 +109,60 @@ def test_visual_html_escapes_dynamic_values() -> None:
     assert "<img" not in html
     assert "&lt;script&gt;" in html
     assert "&lt;b&gt;Equity&lt;/b&gt;" in html
+
+
+def test_signal_decisions_panel_renders_latest_decisions() -> None:
+    html = build_signal_decisions_panel_html(
+        [
+            {
+                "symbol": "ENAUSDT",
+                "status": "qualified",
+                "reason": "qualified",
+                "telegram_status": "sent",
+                "order_link_id": "",
+            },
+            {
+                "symbol": "JTOUSDT",
+                "status": "skipped",
+                "reason": "dry_run",
+                "telegram_status": "sent",
+                "order_link_id": "",
+            },
+        ]
+    )
+
+    assert "Signal Decisions" in html
+    assert "ENAUSDT" in html
+    assert "qualified" in html
+    assert "JTOUSDT" in html
+    assert "dry_run" in html
+    assert "Telegram sent" in html
+    assert "bwi-tone-success" in html
+    assert "bwi-tone-muted" in html
+
+
+def test_signal_decisions_panel_renders_empty_state() -> None:
+    html = build_signal_decisions_panel_html([])
+
+    assert "Signal Decisions" in html
+    assert "No signal decisions yet." in html
+
+
+def test_signal_decisions_panel_escapes_dynamic_values() -> None:
+    html = build_signal_decisions_panel_html(
+        [
+            {
+                "symbol": "<script>alert(1)</script>",
+                "status": "<b>error</b>",
+                "reason": "<img src=x>",
+                "telegram_status": "sent<script>",
+                "order_link_id": "<svg>",
+            }
+        ]
+    )
+
+    assert "<script" not in html
+    assert "<img" not in html
+    assert "<svg" not in html
+    assert "&lt;script&gt;" in html
+    assert "&lt;img src=x&gt;" in html

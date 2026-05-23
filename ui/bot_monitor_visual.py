@@ -314,6 +314,10 @@ def build_visual_panels_html(*, position_rows: list[dict], watchlist_rows: list[
 """
 
 
+def build_signal_decisions_panel_html(decision_rows: list[dict]) -> str:
+    return _panel_html("Signal Decisions", _signal_decision_rows_html(decision_rows), "No signal decisions yet.")
+
+
 def _pill_html(pill: VisualPill) -> str:
     return (
         f'<div class="bwi-pill {_tone_class(pill.tone)}">'
@@ -412,6 +416,47 @@ def _watchlist_rows_html(rows: list[dict]) -> str:
             '</div></div>'
         )
     return "".join(parts)
+
+
+def _signal_decision_rows_html(rows: list[dict]) -> str:
+    parts = []
+    for row in rows[:5]:
+        symbol = _value(row.get("symbol"))
+        status = _value(row.get("status"))
+        reason = _value(row.get("reason"))
+        telegram_status = _value(row.get("telegram_status"))
+        detail_parts = [
+            f"<span>{escape(reason)}</span>",
+            f"<span>Telegram {escape(telegram_status)}</span>",
+        ]
+        execution_status = row.get("execution_status")
+        order_link_id = row.get("order_link_id")
+        if execution_status is not None and execution_status != "":
+            detail_parts.append(f"<span>{escape(_value(execution_status))}</span>")
+        if order_link_id is not None and order_link_id != "":
+            detail_parts.append(f"<span>{escape(_value(order_link_id))}</span>")
+
+        parts.append(
+            '<div class="bwi-list-row">'
+            '<div class="bwi-row-main">'
+            f'<div class="bwi-symbol">{escape(symbol)}</div>'
+            f'<div class="bwi-chip {_tone_class(_signal_decision_tone(status))}">{escape(status)}</div>'
+            '</div>'
+            f'<div class="bwi-row-detail">{"".join(detail_parts)}</div>'
+            '</div>'
+        )
+    return "".join(parts)
+
+
+def _signal_decision_tone(status: str) -> str:
+    normalized = status.lower()
+    if normalized in {"qualified", "entered"}:
+        return "success"
+    if normalized == "error":
+        return "negative"
+    if normalized == "skipped":
+        return "muted"
+    return "neutral"
 
 
 def _tone_class(tone: str) -> str:
