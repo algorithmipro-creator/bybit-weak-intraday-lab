@@ -69,3 +69,6 @@ def test_backend_defaults_use_relative_data_paths_for_local_test_imports():
     assert settings.cache_dir == Path("data/bybit_archive_cache")
     assert settings.jobs_dir == Path("data/jobs")
     assert settings.execution_journal_path == Path("data/execution_journal.csv")
+    assert settings.signal_decision_journal_path == Path("data/signal_decisions.csv")
+    assert settings.signal_auto_entry_enabled is False
+    assert settings.telegram_enabled is False

@@ -12,7 +12,7 @@ from ui.app_navigation import (
 
 
 def test_nav_pages_match_clean_monitor_design() -> None:
-    assert NAV_PAGES == ("Monitor", "Reports", "Scanner Jobs", "Execution History", "Settings")
+    assert NAV_PAGES == ("Monitor", "Reports", "Scanner Jobs", "Signal Decisions", "Execution History", "Settings")
 
 
 def test_ensure_navigation_state_sets_defaults_without_overwriting_existing_values() -> None:

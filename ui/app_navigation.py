@@ -4,7 +4,7 @@ from collections.abc import MutableMapping
 from typing import Any
 
 
-NAV_PAGES = ("Monitor", "Reports", "Scanner Jobs", "Execution History", "Settings")
+NAV_PAGES = ("Monitor", "Reports", "Scanner Jobs", "Signal Decisions", "Execution History", "Settings")
 API_URL_KEY = "bwi_api_url"
 EXECUTION_TOKEN_KEY = "bwi_execution_token"
 CONNECTED_KEY = "bwi_connected"

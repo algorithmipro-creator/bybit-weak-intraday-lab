@@ -12,6 +12,7 @@ from .execution_routes import router as execution_router
 from .job_store import JOB_ID_PATTERN, create_job, job_dir, list_jobs, load_meta, recover_interrupted_jobs, run_job
 from .schemas import JobResponse, OptimizeRequest, ScanRequest
 from .settings import settings
+from .signal_routes import router as signal_router
 
 app = FastAPI(title=settings.project_name)
 executor = ThreadPoolExecutor(max_workers=settings.max_workers)
@@ -27,6 +28,7 @@ app.add_middleware(
 )
 
 app.include_router(execution_router)
+app.include_router(signal_router)
 
 
 @app.get("/health")

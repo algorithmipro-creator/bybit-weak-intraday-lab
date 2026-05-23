@@ -66,6 +66,21 @@ def demo_client_from_config(config: ExecutionConfig) -> BybitDemoClient:
     return BybitDemoClient(api_key=config.api_key, api_secret=config.api_secret, base_url=config.base_url)
 
 
+def demo_short_event_from_request(req: TestShortRequest, *, config: ExecutionConfig, event_id: str | None = None) -> dict:
+    resolved_event_id = event_id or uuid4().hex
+    symbol = req.symbol.strip().upper()
+    return {
+        "created_at_utc": _utc_now_iso(),
+        "event_id": resolved_event_id,
+        "order_link_id": f"bwi-demo-{resolved_event_id[:18]}",
+        "mode": config.execution_mode,
+        "symbol": symbol,
+        "side": "Sell",
+        "category": "linear",
+        "requested_notional_usdt": req.notional_usdt,
+    }
+
+
 def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -243,27 +258,10 @@ def demo_journal(
     return {"rows": rows, "limit": clamped_limit, "count": len(rows)}
 
 
-@router.post("/place-test-short")
-def place_test_short(
-    req: TestShortRequest,
-    x_bwi_execution_token: str | None = Header(default=None, alias="X-BWI-Execution-Token"),
-) -> dict:
-    _require_execution_api_token(x_bwi_execution_token)
-    config = execution_config_from_settings()
+def submit_demo_short_order(req: TestShortRequest, *, config: ExecutionConfig, event: dict) -> dict:
     symbol = req.symbol.strip().upper()
-    event_id = uuid4().hex
-    order_link_id = f"bwi-demo-{event_id[:18]}"
+    order_link_id = event["order_link_id"]
     journal_path = journal_path_from_settings()
-    event = {
-        "created_at_utc": _utc_now_iso(),
-        "event_id": event_id,
-        "order_link_id": order_link_id,
-        "mode": config.execution_mode,
-        "symbol": symbol,
-        "side": "Sell",
-        "category": "linear",
-        "requested_notional_usdt": req.notional_usdt,
-    }
     decision = validate_static_demo_order_request(
         config,
         symbol=symbol,
@@ -359,3 +357,14 @@ def place_test_short(
         "order_link_id": order_link_id,
         "bybit_response": response,
     }
+
+
+@router.post("/place-test-short")
+def place_test_short(
+    req: TestShortRequest,
+    x_bwi_execution_token: str | None = Header(default=None, alias="X-BWI-Execution-Token"),
+) -> dict:
+    _require_execution_api_token(x_bwi_execution_token)
+    config = execution_config_from_settings()
+    event = demo_short_event_from_request(req, config=config)
+    return submit_demo_short_order(req, config=config, event=event)
