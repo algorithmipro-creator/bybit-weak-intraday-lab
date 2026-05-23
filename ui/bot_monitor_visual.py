@@ -34,7 +34,8 @@ def monitor_visual_css() -> str:
     return """
 <style>
 .bwi-executive-overview,
-.bwi-panel-grid {
+.bwi-panel-grid,
+.bwi-signal-decisions-panel {
   --bwi-surface: var(--background-color);
   --bwi-surface-soft: rgba(127, 127, 127, .07);
   --bwi-surface-strong: rgba(127, 127, 127, .11);
@@ -254,7 +255,8 @@ def monitor_visual_css() -> str:
 .bwi-kpi-card.bwi-tone-accent .bwi-kpi-value { color: #1d4ed8; }
 @media (prefers-color-scheme: dark) {
   .bwi-executive-overview,
-  .bwi-panel-grid {
+  .bwi-panel-grid,
+  .bwi-signal-decisions-panel {
     --bwi-surface-soft: rgba(255, 255, 255, .055);
     --bwi-surface-strong: rgba(255, 255, 255, .085);
     --bwi-border: rgba(255, 255, 255, .13);
@@ -312,6 +314,14 @@ def build_visual_panels_html(*, position_rows: list[dict], watchlist_rows: list[
   {_panel_html("Scanner Watchlist", _watchlist_rows_html(watchlist_rows), "No scanner candidates yet.")}
 </div>
 """
+
+
+def build_signal_decisions_panel_html(decision_rows: list[dict]) -> str:
+    return (
+        '<div class="bwi-signal-decisions-panel">'
+        f'{_panel_html("Signal Decisions", _signal_decision_rows_html(decision_rows), "No signal decisions yet.")}'
+        "</div>"
+    )
 
 
 def _pill_html(pill: VisualPill) -> str:
@@ -412,6 +422,47 @@ def _watchlist_rows_html(rows: list[dict]) -> str:
             '</div></div>'
         )
     return "".join(parts)
+
+
+def _signal_decision_rows_html(rows: list[dict]) -> str:
+    parts = []
+    for row in rows[:5]:
+        symbol = _value(row.get("symbol"))
+        status = _value(row.get("status"))
+        reason = _value(row.get("reason"))
+        telegram_status = _value(row.get("telegram_status"))
+        detail_parts = [
+            f"<span>Reason {escape(reason)}</span>",
+            f"<span>Telegram {escape(telegram_status)}</span>",
+        ]
+        execution_status = row.get("execution_status")
+        order_link_id = row.get("order_link_id")
+        if execution_status is not None and execution_status != "":
+            detail_parts.append(f"<span>Execution {escape(_value(execution_status))}</span>")
+        if order_link_id is not None and order_link_id != "":
+            detail_parts.append(f"<span>Order {escape(_value(order_link_id))}</span>")
+
+        parts.append(
+            '<div class="bwi-list-row">'
+            '<div class="bwi-row-main">'
+            f'<div class="bwi-symbol">{escape(symbol)}</div>'
+            f'<div class="bwi-chip {_tone_class(_signal_decision_tone(status))}">{escape(status)}</div>'
+            '</div>'
+            f'<div class="bwi-row-detail">{"".join(detail_parts)}</div>'
+            '</div>'
+        )
+    return "".join(parts)
+
+
+def _signal_decision_tone(status: str) -> str:
+    normalized = status.lower()
+    if normalized in {"qualified", "entered"}:
+        return "success"
+    if normalized == "error":
+        return "negative"
+    if normalized == "skipped":
+        return "muted"
+    return "neutral"
 
 
 def _tone_class(tone: str) -> str:
