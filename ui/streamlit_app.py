@@ -35,6 +35,7 @@ from ui.bot_monitor_visual import (
     VisualMetric,
     VisualPill,
     build_executive_overview_html,
+    build_signal_decisions_panel_html,
     build_visual_panels_html,
     monitor_visual_css,
 )
@@ -585,12 +586,19 @@ def render_bot_monitor(api_url: str, execution_token: str) -> None:
     limits = status_payload.get("limits") or {}
     jobs = _safe_jobs(api_url)
     scanner_watchlist = _load_scanner_watchlist(api_url, jobs)
+    decisions_payload, decisions_error = api_json_or_error("/signals/decisions?limit=5", api_url)
+    decision_rows = []
+    if isinstance(decisions_payload, dict) and isinstance(decisions_payload.get("rows"), list):
+        decision_rows = [row for row in decisions_payload["rows"] if isinstance(row, dict)]
 
     if status_error:
         st.warning(f"Execution status unavailable: {status_error}")
 
     if health_error:
         st.warning(f"Backend health unavailable: {health_error}")
+
+    if decisions_error:
+        st.warning(f"Signal decisions unavailable: {decisions_error}")
 
     wallet_payload = positions_payload = orders_payload = None
     wallet_error = positions_error = orders_error = None
@@ -634,6 +642,10 @@ def render_bot_monitor(api_url: str, execution_token: str) -> None:
     )
     if not execution_token:
         st.info("Connect in Settings to load demo account data.")
+    st.markdown(
+        build_signal_decisions_panel_html(decision_rows),
+        unsafe_allow_html=True,
+    )
     _render_monitor_visual_charts(positions_frame, scanner_watchlist)
 
 

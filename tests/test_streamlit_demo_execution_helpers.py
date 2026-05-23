@@ -254,6 +254,13 @@ def test_bot_monitor_uses_visual_overview_and_charts() -> None:
     assert "_render_monitor_visual_charts" in source
 
 
+def test_bot_monitor_loads_latest_signal_decisions() -> None:
+    bot_monitor_source = _function_source("render_bot_monitor")
+
+    assert '"/signals/decisions?limit=5"' in bot_monitor_source
+    assert "build_signal_decisions_panel_html" in bot_monitor_source
+
+
 def test_variant_a_visual_overview_uses_visual_builders() -> None:
     source = _function_source("_render_variant_a_visual_overview")
 
