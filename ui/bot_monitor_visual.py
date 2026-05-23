@@ -432,15 +432,15 @@ def _signal_decision_rows_html(rows: list[dict]) -> str:
         reason = _value(row.get("reason"))
         telegram_status = _value(row.get("telegram_status"))
         detail_parts = [
-            f"<span>{escape(reason)}</span>",
+            f"<span>Reason {escape(reason)}</span>",
             f"<span>Telegram {escape(telegram_status)}</span>",
         ]
         execution_status = row.get("execution_status")
         order_link_id = row.get("order_link_id")
         if execution_status is not None and execution_status != "":
-            detail_parts.append(f"<span>{escape(_value(execution_status))}</span>")
+            detail_parts.append(f"<span>Execution {escape(_value(execution_status))}</span>")
         if order_link_id is not None and order_link_id != "":
-            detail_parts.append(f"<span>{escape(_value(order_link_id))}</span>")
+            detail_parts.append(f"<span>Order {escape(_value(order_link_id))}</span>")
 
         parts.append(
             '<div class="bwi-list-row">'

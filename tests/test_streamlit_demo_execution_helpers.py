@@ -259,6 +259,9 @@ def test_bot_monitor_loads_latest_signal_decisions() -> None:
 
     assert '"/signals/decisions?limit=5"' in bot_monitor_source
     assert "build_signal_decisions_panel_html" in bot_monitor_source
+    assert bot_monitor_source.index("build_signal_decisions_panel_html") < bot_monitor_source.index(
+        "_render_monitor_visual_charts"
+    )
 
 
 def test_variant_a_visual_overview_uses_visual_builders() -> None:

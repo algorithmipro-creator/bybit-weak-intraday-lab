@@ -203,6 +203,7 @@ def test_signal_decisions_panel_renders_optional_execution_and_order_fields() ->
         ]
     )
 
-    assert "filled" in html
-    assert "bwi-123" in html
+    assert "Reason qualified" in html
+    assert "Execution filled" in html
+    assert "Order bwi-123" in html
     assert "bwi-tone-success" in html
